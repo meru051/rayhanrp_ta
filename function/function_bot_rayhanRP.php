@@ -7,14 +7,20 @@ function sendMessage($rayhanRPChat_id, $rayhanRPMessage, $rayhanRPKeyboard = nul
     global $rayhanRPapiLink;
     $rayhanRPparams = [
         'chat_id' => $rayhanRPChat_id,
-        'text' => $rayhanRPMessage,
-        'parse_mode' => 'Markdown'
+        'text' => $rayhanRPMessage
     ];
 
     if ($rayhanRPKeyboard) {
         $rayhanRPparams['reply_markup'] = json_encode($rayhanRPKeyboard);
     }
 
-    file_get_contents($rayhanRPapiLink . "sendMessage?" . http_build_query($rayhanRPparams));
+    $rayhanRPContext = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 10
+        ]
+    ]);
+
+    @file_get_contents($rayhanRPapiLink . "sendMessage?" . http_build_query($rayhanRPparams), false, $rayhanRPContext);
 }
 ?>
