@@ -378,9 +378,9 @@ if ($databaseRayhanRP) {
             </div>
             <ul class="menu">
                 <li><a class="active" href="#">Dashboard</a></li>
-                <li><a href="#">Manajemen Akun</a></li>
-                <li><a href="#">Jadwal</a></li>
-                <li><a href="#">Tugas</a></li>
+                <li><a href="grup_rayhanRP.php">Grup</a></li>
+                <li><a href="jadwal_rayhanRP.php">Jadwal</a></li>
+                <li><a href="tugas_rayhanRP.php">Tugas</a></li>
                 <li><a href="#">Notifikasi</a></li>
                 <li><a href="#">Pengaturan</a></li>
             </ul>

@@ -23,46 +23,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $rayhanRPError = 'Gagal menyiapkan query login.';
         } else {
             mysqli_stmt_bind_param($rayhanRPStmt, 's', $rayhanRPNisNip);
-            $rayhanRPExecuted = mysqli_stmt_execute($rayhanRPStmt);
-            mysqli_stmt_bind_result($rayhanRPStmt, $rayhanRPIdAkun, $rayhanRPDbNisNip, $rayhanRPDbPassword, $rayhanRPDbRole);
-            $rayhanRPFound = $rayhanRPExecuted && mysqli_stmt_fetch($rayhanRPStmt);
-            mysqli_stmt_close($rayhanRPStmt);
 
-            if (!$rayhanRPFound) {
-                $rayhanRPError = 'Akun tidak ditemukan.';
-            } elseif ($rayhanRPDbRole !== 'admin' && $rayhanRPDbRole !== 'guru') {
-                $rayhanRPError = 'Akun ini bukan admin.';
+            if (!mysqli_stmt_execute($rayhanRPStmt)) {
+                $rayhanRPError = 'Gagal mengeksekusi query login.';
             } else {
-                $rayhanRPIsValid = password_verify($rayhanRPPassword, (string)$rayhanRPDbPassword);
+                mysqli_stmt_bind_result($rayhanRPStmt, $rayhanRPIdAkun, $rayhanRPDbNisNip, $rayhanRPDbPassword, $rayhanRPDbRole);
+                $rayhanRPFound = mysqli_stmt_fetch($rayhanRPStmt);
 
-                if (!$rayhanRPIsValid && hash_equals((string)$rayhanRPDbPassword, $rayhanRPPassword)) {
-                    $rayhanRPNewHash = password_hash($rayhanRPPassword, PASSWORD_DEFAULT);
-                    if ($rayhanRPNewHash !== false) {
-                        $rayhanRPUpdateStmt = mysqli_prepare($databaseRayhanRP, 'UPDATE akun SET password = ? WHERE akun_id = ? LIMIT 1');
-                        if ($rayhanRPUpdateStmt) {
-                            mysqli_stmt_bind_param($rayhanRPUpdateStmt, 'si', $rayhanRPNewHash, $rayhanRPIdAkun);
-                            mysqli_stmt_execute($rayhanRPUpdateStmt);
-                            mysqli_stmt_close($rayhanRPUpdateStmt);
-                            $rayhanRPIsValid = true;
+                if (!$rayhanRPFound) {
+                    $rayhanRPError = 'Akun tidak ditemukan.';
+                } else {
+                    $rayhanRPRoleNormalized = strtolower(trim((string)$rayhanRPDbRole));
+                    if ($rayhanRPRoleNormalized !== 'admin' && $rayhanRPRoleNormalized !== 'guru') {
+                        $rayhanRPError = 'Akun ini tidak memiliki akses panel.';
+                    } else {
+                        $rayhanRPIsValid = password_verify($rayhanRPPassword, (string)$rayhanRPDbPassword);
+
+                        if (!$rayhanRPIsValid && hash_equals((string)$rayhanRPDbPassword, $rayhanRPPassword)) {
+                            $rayhanRPNewHash = password_hash($rayhanRPPassword, PASSWORD_DEFAULT);
+                            if ($rayhanRPNewHash !== false) {
+                                $rayhanRPUpdateStmt = mysqli_prepare($databaseRayhanRP, 'UPDATE akun SET password = ? WHERE akun_id = ? LIMIT 1');
+                                if ($rayhanRPUpdateStmt) {
+                                    mysqli_stmt_bind_param($rayhanRPUpdateStmt, 'si', $rayhanRPNewHash, $rayhanRPIdAkun);
+                                    mysqli_stmt_execute($rayhanRPUpdateStmt);
+                                    mysqli_stmt_close($rayhanRPUpdateStmt);
+                                    $rayhanRPIsValid = true;
+                                }
+                            }
+                        }
+
+                        if (!$rayhanRPIsValid) {
+                            $rayhanRPError = 'Password salah.';
+                        } else {
+                            session_regenerate_id(true);
+                            $_SESSION['rayhanRP_admin_login'] = true;
+                            $_SESSION['rayhanRP_admin_id'] = (int)$rayhanRPIdAkun;
+                            $_SESSION['rayhanRP_admin_nis_nip'] = (string)$rayhanRPDbNisNip;
+                            $_SESSION['rayhanRP_admin_role'] = $rayhanRPRoleNormalized;
+                            header('Location: adminWeb_rayhanRP.php');
+                            exit;
                         }
                     }
                 }
-
-                if (!$rayhanRPIsValid) {
-                    $rayhanRPError = 'Password salah.';
-                } else {
-                    $_SESSION['rayhanRP_admin_login'] = true;
-                    $_SESSION['rayhanRP_admin_id'] = (int)$rayhanRPIdAkun;
-                    $_SESSION['rayhanRP_admin_nis_nip'] = (string)$rayhanRPDbNisNip;
-                    header('Location: adminWeb_rayhanRP.php');
-                    exit;
-                    }
-
-                    $rayhanRPSuccess = 'Login admin berhasil.';
-                }
             }
+
+            mysqli_stmt_close($rayhanRPStmt);
         }
     }
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -244,4 +252,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </body>
 
 </html>
-

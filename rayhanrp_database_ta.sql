@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Feb 12, 2026 at 08:50 AM
+-- Generation Time: Feb 22, 2026 at 01:49 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -40,10 +40,12 @@ CREATE TABLE `akun` (
 --
 
 INSERT INTO `akun` (`akun_id`, `nis_nip`, `password`, `role`, `created_at`) VALUES
-(1, '10243313', '$2y$10$U9F8MtO3R2NtH5XyxYao0e5koYtG6CwE.TQH0L43D0wU0C0pcpyKW', 'siswa', '2026-02-12 10:33:23'),
+(1, '10243313', '$2y$10$RedoOY.5ao8YcMP6ycmLHeprSvAtgpMXZsxv0cWkiYtYJQX2pW3cK', 'admin', '2026-02-12 10:33:23'),
 (2, 'nip_guru', '$2y$10$62.K3.rFrjQqEOjW3PtRs./2fw4TxPFRK74nCjVBStz/0uiJi2ali', 'guru', '2026-02-12 10:33:23'),
 (3, '10243305', '$2y$10$CylmBBYjqhbvGeI9xwELk.ZQR/LuEqNITrEcry222oJE2G8EuKEZa', 'siswa', '2026-02-12 11:30:43'),
-(4, 'admin001', '$2y$10$3Tqty5eIfHwjDaoPzy2A..AsIGdf0Zdiq8Wd.qVtW4RJyi/75mikW', 'admin', '2026-02-12 13:00:25');
+(6, '10242026', '$2y$10$M2YrVDYV2YuqSERZY6NFTusSuWBnTnre1FnIV1m61O.WImOeTYrCm', 'guru', '2026-02-22 16:50:52'),
+(7, 'akun_tes', '$2y$10$W9JMJfwQq3J6AyB1G/PcOunrG3a1mG8tvkksQrFVdZM6TOyzwpB1.', 'siswa', '2026-02-22 18:53:47'),
+(8, '102306363', '$2y$10$6W08PjLEAyQz73EqWJIwbumeiPkFeZdC8NHtk73DNdndO8egkixKC', 'siswa', '2026-02-22 19:16:32');
 
 -- --------------------------------------------------------
 
@@ -64,7 +66,7 @@ CREATE TABLE `grup` (
 INSERT INTO `grup` (`id_grup`, `nama_grup`, `dibuat_oleh_akun_id`) VALUES
 (1, 'Grup Matematika', 2),
 (2, 'Grup Fisika', 2),
-(3, 'XI RPL B', 3);
+(3, 'XI RPL B', 6);
 
 -- --------------------------------------------------------
 
@@ -84,8 +86,12 @@ CREATE TABLE `grup_anggota` (
 --
 
 INSERT INTO `grup_anggota` (`grup_id`, `akun_id`, `joined_at`, `deleted_at`) VALUES
-(3, 1, '2026-02-12 14:33:18', NULL),
-(3, 3, '2026-02-12 14:33:18', NULL);
+(3, 1, '2026-02-22 17:21:22', NULL),
+(3, 2, '2026-02-22 17:20:58', '2026-02-22 17:21:02'),
+(3, 3, '2026-02-22 17:21:22', NULL),
+(3, 6, '2026-02-22 17:21:18', '2026-02-22 17:21:22'),
+(3, 7, '2026-02-22 19:07:50', NULL),
+(3, 8, '2026-02-22 19:19:00', NULL);
 
 -- --------------------------------------------------------
 
@@ -202,7 +208,44 @@ CREATE TABLE `tugas` (
 
 INSERT INTO `tugas` (`id_tugas`, `judul`, `deskripsi`, `tenggat`, `grup_id`, `jadwal_id`, `dibuat_oleh_akun_id`) VALUES
 (1, 'Kerjakan Latihan', 'Kerjakan latihan nomor 1-10', '2024-03-05 23:59:00', 1, 1, 2),
-(2, 'Buat Laporan', 'Laporan praktikum Fisika', '2024-03-10 23:59:00', 2, 2, 2);
+(2, 'Buat Laporan', 'Laporan praktikum Fisika', '2024-03-10 23:59:00', 2, 2, 2),
+(3, 'Speaking in English', 'Kirim Foto Tugas', '2026-02-23 23:59:00', 3, 3, 6);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tugas_pengumpulan`
+--
+
+CREATE TABLE `tugas_pengumpulan` (
+  `id_pengumpulan` int(11) NOT NULL,
+  `tugas_id` int(11) NOT NULL,
+  `akun_id` int(11) NOT NULL,
+  `telegram_chat_id` bigint(20) DEFAULT NULL,
+  `file_type` varchar(20) NOT NULL DEFAULT 'document',
+  `telegram_file_id` varchar(255) NOT NULL,
+  `telegram_file_unique_id` varchar(255) DEFAULT NULL,
+  `telegram_file_path` varchar(255) DEFAULT NULL,
+  `nama_file_asli` varchar(255) DEFAULT NULL,
+  `file_mime` varchar(120) DEFAULT NULL,
+  `file_size` bigint(20) DEFAULT NULL,
+  `file_lokal` varchar(255) DEFAULT NULL,
+  `caption` text DEFAULT NULL,
+  `status` enum('dikumpulkan','dinilai','revisi','terlambat') NOT NULL DEFAULT 'dikumpulkan',
+  `nilai` decimal(5,2) DEFAULT NULL,
+  `catatan_guru` text DEFAULT NULL,
+  `submitted_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `graded_at` datetime DEFAULT NULL,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `tugas_pengumpulan`
+--
+
+INSERT INTO `tugas_pengumpulan` (`id_pengumpulan`, `tugas_id`, `akun_id`, `telegram_chat_id`, `file_type`, `telegram_file_id`, `telegram_file_unique_id`, `telegram_file_path`, `nama_file_asli`, `file_mime`, `file_size`, `file_lokal`, `caption`, `status`, `nilai`, `catatan_guru`, `submitted_at`, `graded_at`, `updated_at`) VALUES
+(1, 3, 1, 8445211581, 'photo', 'AgACAgUAAxkBAAIBY2ma5dL3OydpacRsVezFek3LvmwpAAITDmsbLrLZVKhKg5rHYeImAQADAgADeAADOgQ', 'AQADEw5rGy6y2VR9', 'photos/file_0.jpg', 'foto_tugas.jpg', 'image/jpeg', 64053, 'data/tugas_uploads/tugas_3_akun_1_20260222_121739_7be239d0.jpg', '', 'dinilai', 100.00, '👍', '2026-02-22 18:17:41', '2026-02-22 18:20:23', '2026-02-22 18:20:23'),
+(2, 3, 8, 6202447439, 'photo', 'AgACAgUAAxkBAAIBtWma9MrJHf614IHszmwCwYswahzWAALkEGsbkdDYVB3Bncph8-UqAQADAgADeAADOgQ', 'AQAD5BBrG5HQ2FR9', 'photos/file_2.jpg', 'foto_tugas.jpg', 'image/jpeg', 28725, 'data/tugas_uploads/tugas_3_akun_8_20260222_132131_2b2cc892.jpg', '', 'dikumpulkan', NULL, NULL, '2026-02-22 19:21:32', NULL, '2026-02-22 19:21:32');
 
 --
 -- Indexes for dumped tables
@@ -268,6 +311,14 @@ ALTER TABLE `tugas`
   ADD KEY `dibuat_oleh_akun_id` (`dibuat_oleh_akun_id`);
 
 --
+-- Indexes for table `tugas_pengumpulan`
+--
+ALTER TABLE `tugas_pengumpulan`
+  ADD PRIMARY KEY (`id_pengumpulan`),
+  ADD UNIQUE KEY `uniq_tugas_akun` (`tugas_id`,`akun_id`),
+  ADD KEY `idx_tp_akun` (`akun_id`);
+
+--
 -- AUTO_INCREMENT for dumped tables
 --
 
@@ -275,7 +326,7 @@ ALTER TABLE `tugas`
 -- AUTO_INCREMENT for table `akun`
 --
 ALTER TABLE `akun`
-  MODIFY `akun_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `akun_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `grup`
@@ -311,7 +362,13 @@ ALTER TABLE `template_pengingat`
 -- AUTO_INCREMENT for table `tugas`
 --
 ALTER TABLE `tugas`
-  MODIFY `id_tugas` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id_tugas` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT for table `tugas_pengumpulan`
+--
+ALTER TABLE `tugas_pengumpulan`
+  MODIFY `id_pengumpulan` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- Constraints for dumped tables
@@ -358,6 +415,13 @@ ALTER TABLE `tugas`
   ADD CONSTRAINT `tugas_ibfk_1` FOREIGN KEY (`grup_id`) REFERENCES `grup` (`id_grup`),
   ADD CONSTRAINT `tugas_ibfk_2` FOREIGN KEY (`jadwal_id`) REFERENCES `jadwal` (`id_jadwal`),
   ADD CONSTRAINT `tugas_ibfk_3` FOREIGN KEY (`dibuat_oleh_akun_id`) REFERENCES `akun` (`akun_id`);
+
+--
+-- Constraints for table `tugas_pengumpulan`
+--
+ALTER TABLE `tugas_pengumpulan`
+  ADD CONSTRAINT `fk_tp_akun` FOREIGN KEY (`akun_id`) REFERENCES `akun` (`akun_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_tp_tugas` FOREIGN KEY (`tugas_id`) REFERENCES `tugas` (`id_tugas`) ON DELETE CASCADE ON UPDATE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
