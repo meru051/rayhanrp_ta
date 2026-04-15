@@ -1,33 +1,17 @@
 <?php
 require_once __DIR__ . '/../koneksi_rayhanRP.php';
-session_start();
+require_once __DIR__ . '/includes/admin_layout_rayhanRP.php';
+rayhanRPStartSession();
 
-if (empty($_SESSION['rayhanRP_admin_login'])) {
-    header('Location: loginAdmin_rayhanRP.php');
-    exit;
-}
-
-$rayhanRPAdminId = (int)($_SESSION['rayhanRP_admin_id'] ?? 0);
-$rayhanRPAdminNisNip = (string)($_SESSION['rayhanRP_admin_nis_nip'] ?? 'admin');
+$rayhanRPAdmin = rayhanRPRequireAdminSession('loginAdmin_rayhanRP.php');
+$rayhanRPAdminId = (int)$rayhanRPAdmin['akun_id'];
+$rayhanRPAdminNisNip = (string)$rayhanRPAdmin['nis_nip'];
+$rayhanRPAdminLabel = (string)$rayhanRPAdmin['label'];
 
 $rayhanRPError = '';
 $rayhanRPSuccess = '';
-$rayhanRPAdminRole = 'guru';
-
-if ($databaseRayhanRP && $rayhanRPAdminId > 0) {
-    $rayhanRPRoleStmt = mysqli_prepare($databaseRayhanRP, 'SELECT role FROM akun WHERE akun_id = ? LIMIT 1');
-    if ($rayhanRPRoleStmt) {
-        mysqli_stmt_bind_param($rayhanRPRoleStmt, 'i', $rayhanRPAdminId);
-        mysqli_stmt_execute($rayhanRPRoleStmt);
-        mysqli_stmt_bind_result($rayhanRPRoleStmt, $rayhanRPDbRole);
-        if (mysqli_stmt_fetch($rayhanRPRoleStmt)) {
-            $rayhanRPAdminRole = (string)$rayhanRPDbRole;
-        }
-        mysqli_stmt_close($rayhanRPRoleStmt);
-    }
-}
-
-$rayhanRPCanAccessAll = ($rayhanRPAdminRole === 'admin');
+$rayhanRPAdminRole = (string)$rayhanRPAdmin['role'];
+$rayhanRPCanAccessAll = (bool)$rayhanRPAdmin['can_access_all'];
 
 function rayhanRP_parseIntList($rayhanRPInputList)
 {
@@ -583,547 +567,191 @@ if ($databaseRayhanRP) {
         }
     }
 }
+
+$rayhanRPPageTitle = 'Kelola Grup';
+$rayhanRPPageSubtitle = 'Login sebagai ' . htmlspecialchars($rayhanRPAdminNisNip, ENT_QUOTES, 'UTF-8') . ' (' . htmlspecialchars($rayhanRPAdminRole, ENT_QUOTES, 'UTF-8') . ') | Urutan kerja: Grup -> Jadwal -> Tugas -> Notifikasi';
+rayhanRPRenderAdminLayoutStart([
+    'title' => $rayhanRPPageTitle,
+    'subtitle' => $rayhanRPPageSubtitle,
+    'page_key' => 'grup',
+    'admin' => $rayhanRPAdmin,
+]);
 ?>
-<!DOCTYPE html>
-<html lang="id">
+<div class="page-stack">
+<section class="grid">
+    <article class="card">
+        <h3><?php echo $rayhanRPFormData['id_grup'] > 0 ? 'Edit Grup' : 'Tambah Grup'; ?></h3>
+        <p class="note">Isi nama grup dan pembuat grup untuk menyimpan data.</p>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kelola Grup - Bot SiRey</title>
-    <style>
-        :root {
-            --bg: #f0f4fb;
-            --card: #ffffff;
-            --line: #dbe4f0;
-            --txt: #0f172a;
-            --muted: #64748b;
-            --primary: #0f5ae0;
-            --primary-hover: #0c49b8;
-            --danger: #d92d20;
-            --ok-bg: #dcfce7;
-            --ok-txt: #166534;
-            --err-bg: #fee2e2;
-            --err-txt: #991b1b;
-        }
+        <?php if ($rayhanRPError !== ''): ?>
+            <div class="msg msg-err"><?php echo htmlspecialchars($rayhanRPError, ENT_QUOTES, 'UTF-8'); ?></div>
+        <?php endif; ?>
+        <?php if ($rayhanRPSuccess !== ''): ?>
+            <div class="msg msg-ok"><?php echo htmlspecialchars($rayhanRPSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
+        <?php endif; ?>
 
-        * {
-            box-sizing: border-box;
-        }
+        <form method="post" action="">
+            <input type="hidden" name="action" value="<?php echo $rayhanRPFormData['id_grup'] > 0 ? 'update' : 'create'; ?>">
+            <input type="hidden" name="id_grup" value="<?php echo (int)$rayhanRPFormData['id_grup']; ?>">
 
-        body {
-            margin: 0;
-            font-family: "Segoe UI", Tahoma, sans-serif;
-            background: linear-gradient(180deg, #ebf2ff 0%, var(--bg) 45%);
-            color: var(--txt);
-        }
-
-        .container {
-            max-width: 1180px;
-            margin: 0 auto;
-            padding: 22px;
-        }
-
-        .topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 14px 16px;
-        }
-
-        .title {
-            margin: 0;
-            font-size: 1.2rem;
-        }
-
-        .subtitle {
-            margin: 4px 0 0;
-            color: var(--muted);
-            font-size: 0.9rem;
-        }
-
-        .actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-link {
-            text-decoration: none;
-            border: 0;
-            background: #fff;
-            color: var(--primary);
-            border: 1px solid #bfdbfe;
-            border-radius: 10px;
-            padding: 9px 12px;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .btn-link:hover {
-            background: #eff6ff;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: 360px 1fr;
-            gap: 14px;
-        }
-
-        .card {
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 16px;
-        }
-
-        .card h3 {
-            margin: 0;
-            font-size: 1rem;
-        }
-
-        .card p.note {
-            margin: 6px 0 0;
-            font-size: 0.86rem;
-            color: var(--muted);
-        }
-
-        .field {
-            margin-top: 12px;
-        }
-
-        .field label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 0.88rem;
-            font-weight: 600;
-        }
-
-        .field input,
-        .field select {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            padding: 10px 11px;
-            font-size: 0.92rem;
-            outline: none;
-            background: #fff;
-        }
-
-        .field input:focus,
-        .field select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(15, 90, 224, 0.15);
-        }
-
-        .hint {
-            display: block;
-            margin-top: 6px;
-            color: var(--muted);
-            font-size: 0.78rem;
-        }
-
-        .member-toolbar {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        .member-btn {
-            border: 1px solid #c7d2fe;
-            border-radius: 8px;
-            background: #eef2ff;
-            color: #1e3a8a;
-            font-size: 0.78rem;
-            font-weight: 600;
-            padding: 6px 10px;
-            cursor: pointer;
-        }
-
-        .member-btn:hover {
-            background: #dbeafe;
-        }
-
-        .member-search {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            padding: 9px 10px;
-            font-size: 0.9rem;
-            margin-top: 8px;
-        }
-
-        .member-search:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(15, 90, 224, 0.15);
-            outline: none;
-        }
-
-        .member-list {
-            margin-top: 8px;
-            border: 1px solid var(--line);
-            border-radius: 10px;
-            max-height: 220px;
-            overflow: auto;
-            background: #fff;
-            padding: 8px;
-            display: grid;
-            gap: 6px;
-        }
-
-        .member-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            border-radius: 8px;
-            padding: 6px;
-            cursor: pointer;
-        }
-
-        .member-item:hover {
-            background: #f8fafc;
-        }
-
-        .member-item input {
-            margin-top: 2px;
-            width: auto;
-        }
-
-        .member-item span {
-            font-size: 0.88rem;
-        }
-
-        .btn-primary {
-            margin-top: 14px;
-            width: 100%;
-            border: 0;
-            border-radius: 10px;
-            background: var(--primary);
-            color: #fff;
-            padding: 11px 12px;
-            font-size: 0.92rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-hover);
-        }
-
-        .msg {
-            margin-top: 12px;
-            border-radius: 10px;
-            padding: 10px 11px;
-            font-size: 0.9rem;
-        }
-
-        .msg-ok {
-            background: var(--ok-bg);
-            color: var(--ok-txt);
-        }
-
-        .msg-err {
-            background: var(--err-bg);
-            color: var(--err-txt);
-        }
-
-        .table-wrap {
-            overflow-x: auto;
-            margin-top: 12px;
-        }
-
-        table {
-            width: 100%;
-            min-width: 760px;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            padding: 10px 8px;
-            border-bottom: 1px solid var(--line);
-            text-align: left;
-            vertical-align: top;
-            font-size: 0.88rem;
-        }
-
-        th {
-            text-transform: uppercase;
-            font-size: 0.78rem;
-            letter-spacing: 0.04em;
-            color: var(--muted);
-        }
-
-        .tag {
-            display: inline-block;
-            border-radius: 999px;
-            padding: 3px 8px;
-            font-size: 0.76rem;
-            color: #1e3a8a;
-            background: #dbeafe;
-            font-weight: 600;
-        }
-
-        .table-actions {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-
-        .btn-sm {
-            border: 1px solid transparent;
-            border-radius: 8px;
-            padding: 7px 10px;
-            font-size: 0.82rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-        }
-
-        .btn-edit {
-            border-color: #bfdbfe;
-            color: #1d4ed8;
-            background: #eff6ff;
-        }
-
-        .btn-edit:hover {
-            background: #dbeafe;
-        }
-
-        .btn-delete {
-            border-color: #fecaca;
-            color: #b42318;
-            background: #fff1f2;
-        }
-
-        .btn-delete:hover {
-            color: #fff;
-            background: var(--danger);
-            border-color: var(--danger);
-        }
-
-        @media (max-width: 1040px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 560px) {
-            .container {
-                padding: 12px;
-            }
-
-            .topbar {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .actions {
-                width: 100%;
-            }
-        }
-    </style>
-</head>
-
-<body>
-    <div class="container">
-        <section class="topbar">
-            <div>
-                <h1 class="title">Kelola Grup</h1>
-                <p class="subtitle">Login sebagai <?php echo htmlspecialchars($rayhanRPAdminNisNip, ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($rayhanRPAdminRole, ENT_QUOTES, 'UTF-8'); ?>)</p>
+            <div class="field">
+                <label for="nama_grup">Nama Grup</label>
+                <input type="text" name="nama_grup" id="nama_grup" required value="<?php echo htmlspecialchars((string)$rayhanRPFormData['nama_grup'], ENT_QUOTES, 'UTF-8'); ?>">
             </div>
-            <div class="actions">
-                <a class="btn-link" href="adminWeb_rayhanRP.php">Dashboard</a>
-                <a class="btn-link" href="jadwal_rayhanRP.php">Kelola Jadwal</a>
+
+            <div class="field">
+                <label for="dibuat_oleh_akun_id">Dibuat Oleh</label>
+                <?php if ($rayhanRPCanAccessAll): ?>
+                    <select name="dibuat_oleh_akun_id" id="dibuat_oleh_akun_id" required>
+                        <option value="">Pilih akun</option>
+                    <?php foreach ($rayhanRPPembuatOptions as $rayhanRPPembuat): ?>
+                        <option value="<?php echo (int)$rayhanRPPembuat['akun_id']; ?>" <?php echo ((int)$rayhanRPFormData['dibuat_oleh_akun_id'] === (int)$rayhanRPPembuat['akun_id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars((string)$rayhanRPPembuat['nis_nip'], ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars((string)$rayhanRPPembuat['role'], ENT_QUOTES, 'UTF-8'); ?>)
+                        </option>
+                    <?php endforeach; ?>
+                    </select>
+                <?php else: ?>
+                    <input type="hidden" name="dibuat_oleh_akun_id" value="<?php echo (int)$rayhanRPAdminId; ?>">
+                    <input type="text" value="<?php echo htmlspecialchars($rayhanRPAdminNisNip . ' (' . $rayhanRPAdminRole . ')', ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                <?php endif; ?>
             </div>
-        </section>
 
-        <section class="grid">
-            <article class="card">
-                <h3><?php echo $rayhanRPFormData['id_grup'] > 0 ? 'Edit Grup' : 'Tambah Grup'; ?></h3>
-                <p class="note">Isi nama grup dan pembuat grup untuk menyimpan data.</p>
-
-                <?php if ($rayhanRPError !== ''): ?>
-                    <div class="msg msg-err"><?php echo htmlspecialchars($rayhanRPError, ENT_QUOTES, 'UTF-8'); ?></div>
-                <?php endif; ?>
-                <?php if ($rayhanRPSuccess !== ''): ?>
-                    <div class="msg msg-ok"><?php echo htmlspecialchars($rayhanRPSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
-                <?php endif; ?>
-
-                <form method="post" action="">
-                    <input type="hidden" name="action" value="<?php echo $rayhanRPFormData['id_grup'] > 0 ? 'update' : 'create'; ?>">
-                    <input type="hidden" name="id_grup" value="<?php echo (int)$rayhanRPFormData['id_grup']; ?>">
-
-                    <div class="field">
-                        <label for="nama_grup">Nama Grup</label>
-                        <input type="text" name="nama_grup" id="nama_grup" required value="<?php echo htmlspecialchars((string)$rayhanRPFormData['nama_grup'], ENT_QUOTES, 'UTF-8'); ?>">
+            <?php if ((int)$rayhanRPFormData['id_grup'] > 0): ?>
+                <div class="field">
+                    <label for="rayhanRPFilterAnggota">Anggota Grup</label>
+                    <input
+                        id="rayhanRPFilterAnggota"
+                        class="member-search"
+                        type="text"
+                        placeholder="Cari NIS/NIP atau role..."
+                        oninput="rayhanRPFilterMembers(this.value)">
+                    <div class="member-toolbar">
+                        <button class="member-btn" type="button" onclick="rayhanRPSetAllMembers(true)">Pilih Semua</button>
+                        <button class="member-btn" type="button" onclick="rayhanRPSetAllMembers(false)">Kosongkan</button>
                     </div>
-
-                    <div class="field">
-                        <label for="dibuat_oleh_akun_id">Dibuat Oleh</label>
-                        <?php if ($rayhanRPCanAccessAll): ?>
-                            <select name="dibuat_oleh_akun_id" id="dibuat_oleh_akun_id" required>
-                                <option value="">Pilih akun</option>
-                            <?php foreach ($rayhanRPPembuatOptions as $rayhanRPPembuat): ?>
-                                <option value="<?php echo (int)$rayhanRPPembuat['akun_id']; ?>" <?php echo ((int)$rayhanRPFormData['dibuat_oleh_akun_id'] === (int)$rayhanRPPembuat['akun_id']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars((string)$rayhanRPPembuat['nis_nip'], ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars((string)$rayhanRPPembuat['role'], ENT_QUOTES, 'UTF-8'); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                            </select>
-                        <?php else: ?>
-                            <input type="hidden" name="dibuat_oleh_akun_id" value="<?php echo (int)$rayhanRPAdminId; ?>">
-                            <input type="text" value="<?php echo htmlspecialchars($rayhanRPAdminNisNip . ' (' . $rayhanRPAdminRole . ')', ENT_QUOTES, 'UTF-8'); ?>" readonly>
-                        <?php endif; ?>
+                    <div class="member-list" id="rayhanRPListAnggota">
+                        <?php foreach ($rayhanRPAkunAnggotaOptions as $rayhanRPAkunOption): ?>
+                            <?php $rayhanRPLabelAnggota = (string)$rayhanRPAkunOption['nis_nip'] . ' (' . (string)$rayhanRPAkunOption['role'] . ')'; ?>
+                            <label class="member-item" data-search="<?php echo htmlspecialchars(strtolower($rayhanRPLabelAnggota), ENT_QUOTES, 'UTF-8'); ?>">
+                                <input
+                                    type="checkbox"
+                                    name="anggota_ids[]"
+                                    value="<?php echo (int)$rayhanRPAkunOption['akun_id']; ?>"
+                                    <?php echo isset($rayhanRPAnggotaTerpilihMap[(int)$rayhanRPAkunOption['akun_id']]) ? 'checked' : ''; ?>>
+                                <span><?php echo htmlspecialchars($rayhanRPLabelAnggota, ENT_QUOTES, 'UTF-8'); ?></span>
+                            </label>
+                        <?php endforeach; ?>
                     </div>
-
-                    <?php if ((int)$rayhanRPFormData['id_grup'] > 0): ?>
-                        <div class="field">
-                            <label for="rayhanRPFilterAnggota">Anggota Grup</label>
-                            <input
-                                id="rayhanRPFilterAnggota"
-                                class="member-search"
-                                type="text"
-                                placeholder="Cari NIS/NIP atau role..."
-                                oninput="rayhanRPFilterMembers(this.value)">
-                            <div class="member-toolbar">
-                                <button class="member-btn" type="button" onclick="rayhanRPSetAllMembers(true)">Pilih Semua</button>
-                                <button class="member-btn" type="button" onclick="rayhanRPSetAllMembers(false)">Kosongkan</button>
-                            </div>
-                            <div class="member-list" id="rayhanRPListAnggota">
-                                <?php foreach ($rayhanRPAkunAnggotaOptions as $rayhanRPAkunOption): ?>
-                                    <?php $rayhanRPLabelAnggota = (string)$rayhanRPAkunOption['nis_nip'] . ' (' . (string)$rayhanRPAkunOption['role'] . ')'; ?>
-                                    <label class="member-item" data-search="<?php echo htmlspecialchars(strtolower($rayhanRPLabelAnggota), ENT_QUOTES, 'UTF-8'); ?>">
-                                        <input
-                                            type="checkbox"
-                                            name="anggota_ids[]"
-                                            value="<?php echo (int)$rayhanRPAkunOption['akun_id']; ?>"
-                                            <?php echo isset($rayhanRPAnggotaTerpilihMap[(int)$rayhanRPAkunOption['akun_id']]) ? 'checked' : ''; ?>>
-                                        <span><?php echo htmlspecialchars($rayhanRPLabelAnggota, ENT_QUOTES, 'UTF-8'); ?></span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                            <small class="hint">
-                                Centang anggota aktif grup ini. Terpilih: <strong id="rayhanRPCountAnggota"><?php echo count($rayhanRPFormData['anggota_ids']); ?></strong>.
-                            </small>
-                        </div>
-                    <?php endif; ?>
-
-                    <button class="btn-primary" type="submit"><?php echo $rayhanRPFormData['id_grup'] > 0 ? 'Simpan Perubahan' : 'Tambah Grup'; ?></button>
-                </form>
-            </article>
-
-            <article class="card">
-                <h3>Daftar Grup</h3>
-                <p class="note">Data grup yang dapat Anda kelola saat ini.</p>
-
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>No</th>
-                                <th>Nama Grup</th>
-                                <th>Pembuat</th>
-                                <th>Anggota</th>
-                                <th>Jadwal</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($rayhanRPGrupList) === 0): ?>
-                                <tr>
-                                    <td colspan="6">Belum ada data grup.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php $rayhanRPNo = 1; ?>
-                                <?php foreach ($rayhanRPGrupList as $rayhanRPGrup): ?>
-                                    <tr>
-                                        <td><?php echo $rayhanRPNo++; ?></td>
-                                        <td><strong><?php echo htmlspecialchars((string)$rayhanRPGrup['nama_grup'], ENT_QUOTES, 'UTF-8'); ?></strong></td>
-                                        <td>
-                                            <?php echo htmlspecialchars((string)$rayhanRPGrup['pembuat_nis_nip'], ENT_QUOTES, 'UTF-8'); ?>
-                                            <br><span class="tag"><?php echo htmlspecialchars((string)$rayhanRPGrup['pembuat_role'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                        </td>
-                                        <td><?php echo (int)$rayhanRPGrup['jumlah_anggota']; ?></td>
-                                        <td><?php echo (int)$rayhanRPGrup['jumlah_jadwal']; ?></td>
-                                        <td>
-                                            <div class="table-actions">
-                                                <a class="btn-sm btn-edit" href="?edit=<?php echo (int)$rayhanRPGrup['id_grup']; ?>">Edit</a>
-                                                <form method="post" action="" onsubmit="return confirm('Hapus grup ini?');">
-                                                    <input type="hidden" name="action" value="delete">
-                                                    <input type="hidden" name="id_grup" value="<?php echo (int)$rayhanRPGrup['id_grup']; ?>">
-                                                    <button type="submit" class="btn-sm btn-delete">Hapus</button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                    <small class="hint">
+                        Centang anggota aktif grup ini. Terpilih: <strong id="rayhanRPCountAnggota"><?php echo count($rayhanRPFormData['anggota_ids']); ?></strong>.
+                    </small>
                 </div>
+            <?php endif; ?>
 
-            </article>
-        </section>
-    </div>
-    <script>
-        var rayhanRPAnggotaTerpilihAwal = <?php echo json_encode(array_map('intval', (array)$rayhanRPFormData['anggota_ids']), JSON_UNESCAPED_UNICODE); ?>;
+            <div class="field-actions">
+                <button class="btn-primary" type="submit"><?php echo $rayhanRPFormData['id_grup'] > 0 ? 'Simpan Perubahan' : 'Tambah Grup'; ?></button>
+                <?php if ((int)$rayhanRPFormData['id_grup'] > 0): ?>
+                    <a class="btn secondary" href="grup_rayhanRP.php">Batal Edit</a>
+                <?php endif; ?>
+            </div>
+        </form>
+    </article>
 
-        function rayhanRPGetMemberCheckboxes() {
-            return Array.prototype.slice.call(document.querySelectorAll('input[name="anggota_ids[]"]'));
+    <article class="card">
+        <h3>Daftar Grup</h3>
+        <p class="note">Data grup yang dapat Anda kelola saat ini.</p>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Nama Grup</th>
+                        <th>Pembuat</th>
+                        <th>Anggota</th>
+                        <th>Jadwal</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (count($rayhanRPGrupList) === 0): ?>
+                        <tr>
+                            <td colspan="6">Belum ada data grup.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php $rayhanRPNo = 1; ?>
+                        <?php foreach ($rayhanRPGrupList as $rayhanRPGrup): ?>
+                            <tr>
+                                <td><?php echo $rayhanRPNo++; ?></td>
+                                <td><strong><?php echo htmlspecialchars((string)$rayhanRPGrup['nama_grup'], ENT_QUOTES, 'UTF-8'); ?></strong></td>
+                                <td>
+                                    <?php echo htmlspecialchars((string)$rayhanRPGrup['pembuat_nis_nip'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <span class="tag"><?php echo htmlspecialchars((string)$rayhanRPGrup['pembuat_role'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                </td>
+                                <td><?php echo (int)$rayhanRPGrup['jumlah_anggota']; ?></td>
+                                <td><?php echo (int)$rayhanRPGrup['jumlah_jadwal']; ?></td>
+                                <td>
+                                    <div class="table-actions">
+                                        <a class="btn-sm btn-edit" href="?edit=<?php echo (int)$rayhanRPGrup['id_grup']; ?>">Edit</a>
+                                        <form method="post" action="" onsubmit="return confirm('Hapus grup ini?');">
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="id_grup" value="<?php echo (int)$rayhanRPGrup['id_grup']; ?>">
+                                            <button type="submit" class="btn-sm btn-delete">Hapus</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+</div>
+<script>
+    var rayhanRPAnggotaTerpilihAwal = <?php echo json_encode(array_map('intval', (array)$rayhanRPFormData['anggota_ids']), JSON_UNESCAPED_UNICODE); ?>;
+
+    function rayhanRPGetMemberCheckboxes() {
+        return Array.prototype.slice.call(document.querySelectorAll('input[name="anggota_ids[]"]'));
+    }
+
+    function rayhanRPUpdateMemberCount() {
+        var rayhanRPCountNode = document.getElementById('rayhanRPCountAnggota');
+        if (!rayhanRPCountNode) {
+            return;
         }
+        var rayhanRPCheckedCount = rayhanRPGetMemberCheckboxes().filter(function (rayhanRPCheckbox) {
+            return rayhanRPCheckbox.checked;
+        }).length;
+        rayhanRPCountNode.textContent = String(rayhanRPCheckedCount);
+    }
 
-        function rayhanRPUpdateMemberCount() {
-            var rayhanRPCountNode = document.getElementById('rayhanRPCountAnggota');
-            if (!rayhanRPCountNode) {
-                return;
-            }
-            var rayhanRPCheckedCount = rayhanRPGetMemberCheckboxes().filter(function (rayhanRPCheckbox) {
-                return rayhanRPCheckbox.checked;
-            }).length;
-            rayhanRPCountNode.textContent = String(rayhanRPCheckedCount);
-        }
+    function rayhanRPSetAllMembers(rayhanRPChecked) {
+        rayhanRPGetMemberCheckboxes().forEach(function (rayhanRPCheckbox) {
+            rayhanRPCheckbox.checked = rayhanRPChecked;
+        });
+        rayhanRPUpdateMemberCount();
+    }
 
-        function rayhanRPSetAllMembers(rayhanRPChecked) {
-            rayhanRPGetMemberCheckboxes().forEach(function (rayhanRPCheckbox) {
-                rayhanRPCheckbox.checked = rayhanRPChecked;
-            });
+    function rayhanRPFilterMembers(rayhanRPKeyword) {
+        var rayhanRPNormalizedKeyword = String(rayhanRPKeyword || '').toLowerCase().trim();
+        var rayhanRPItems = Array.prototype.slice.call(document.querySelectorAll('#rayhanRPListAnggota .member-item'));
+        rayhanRPItems.forEach(function (rayhanRPItem) {
+            var rayhanRPSearchText = String(rayhanRPItem.getAttribute('data-search') || '');
+            var rayhanRPVisible = rayhanRPNormalizedKeyword === '' || rayhanRPSearchText.indexOf(rayhanRPNormalizedKeyword) !== -1;
+            rayhanRPItem.style.display = rayhanRPVisible ? 'flex' : 'none';
+        });
+    }
+
+    document.addEventListener('change', function (rayhanRPEvent) {
+        if (rayhanRPEvent.target && rayhanRPEvent.target.name === 'anggota_ids[]') {
             rayhanRPUpdateMemberCount();
         }
+    });
 
-        function rayhanRPFilterMembers(rayhanRPKeyword) {
-            var rayhanRPNormalizedKeyword = String(rayhanRPKeyword || '').toLowerCase().trim();
-            var rayhanRPItems = Array.prototype.slice.call(document.querySelectorAll('#rayhanRPListAnggota .member-item'));
-            rayhanRPItems.forEach(function (rayhanRPItem) {
-                var rayhanRPSearchText = String(rayhanRPItem.getAttribute('data-search') || '');
-                var rayhanRPVisible = rayhanRPNormalizedKeyword === '' || rayhanRPSearchText.indexOf(rayhanRPNormalizedKeyword) !== -1;
-                rayhanRPItem.style.display = rayhanRPVisible ? 'flex' : 'none';
-            });
-        }
-
-        document.addEventListener('change', function (rayhanRPEvent) {
-            if (rayhanRPEvent.target && rayhanRPEvent.target.name === 'anggota_ids[]') {
-                rayhanRPUpdateMemberCount();
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', function () {
-            if (Array.isArray(rayhanRPAnggotaTerpilihAwal) && rayhanRPAnggotaTerpilihAwal.length > 0) {
-                var rayhanRPSelectedMap = {};
-                rayhanRPAnggotaTerpilihAwal.forEach(function (rayhanRPId) {
-                    rayhanRPSelectedMap[String(rayhanRPId)] = true;
-                });
-                rayhanRPGetMemberCheckboxes().forEach(function (rayhanRPCheckbox) {
-                    rayhanRPCheckbox.checked = !!rayhanRPSelectedMap[String(rayhanRPCheckbox.value)];
-                });
-            }
-            rayhanRPUpdateMemberCount();
-        });
-    </script>
-</body>
-
-</html>
+    document.addEventListener('DOMContentLoaded', function () {
+        rayhanRPUpdateMemberCount();
+    });
+</script>
+<?php rayhanRPRenderAdminLayoutEnd(); ?>

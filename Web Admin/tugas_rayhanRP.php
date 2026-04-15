@@ -1,15 +1,13 @@
 <?php
 require_once __DIR__ . '/../koneksi_rayhanRP.php';
-session_start();
+require_once __DIR__ . '/includes/admin_layout_rayhanRP.php';
+rayhanRPStartSession();
 
-if (empty($_SESSION['rayhanRP_admin_login'])) {
-    header('Location: loginAdmin_rayhanRP.php');
-    exit;
-}
-
-$rayhanRPAdminId = (int)($_SESSION['rayhanRP_admin_id'] ?? 0);
-$rayhanRPAdminNisNip = (string)($_SESSION['rayhanRP_admin_nis_nip'] ?? 'admin');
-$rayhanRPAdminRole = strtolower(trim((string)($_SESSION['rayhanRP_admin_role'] ?? '')));
+$rayhanRPAdmin = rayhanRPRequireAdminSession('loginAdmin_rayhanRP.php');
+$rayhanRPAdminId = (int)$rayhanRPAdmin['akun_id'];
+$rayhanRPAdminNisNip = (string)$rayhanRPAdmin['nis_nip'];
+$rayhanRPAdminLabel = (string)$rayhanRPAdmin['label'];
+$rayhanRPAdminRole = (string)$rayhanRPAdmin['role'];
 $rayhanRPError = '';
 $rayhanRPSuccess = '';
 
@@ -101,16 +99,7 @@ function rayhanRPCanAccessTask($db, $taskId, $adminId, $all)
     return (bool)$ok;
 }
 
-if ($databaseRayhanRP && $rayhanRPAdminRole === '' && $rayhanRPAdminId > 0) {
-    $rayhanRPAdminRole = rayhanRPRoleFromDb($databaseRayhanRP, $rayhanRPAdminId);
-}
-if ($rayhanRPAdminRole !== 'admin' && $rayhanRPAdminRole !== 'guru') {
-    session_unset();
-    session_destroy();
-    header('Location: loginAdmin_rayhanRP.php');
-    exit;
-}
-$rayhanRPCanAccessAll = ($rayhanRPAdminRole === 'admin');
+$rayhanRPCanAccessAll = (bool)$rayhanRPAdmin['can_access_all'];
 
 if ($databaseRayhanRP && !rayhanRPEnsureTugasTable($databaseRayhanRP)) {
     $rayhanRPError = 'Gagal menyiapkan tabel pengumpulan tugas.';
@@ -418,525 +407,229 @@ if ($databaseRayhanRP) {
         }
     }
 }
+
+$rayhanRPPageTitle = 'Kelola Tugas';
+$rayhanRPPageSubtitle = 'Login sebagai ' . htmlspecialchars($rayhanRPAdminNisNip, ENT_QUOTES, 'UTF-8') . ' (' . htmlspecialchars($rayhanRPAdminRole, ENT_QUOTES, 'UTF-8') . ') | Setelah buat tugas, kirim notifikasi agar siswa tahu.';
+rayhanRPRenderAdminLayoutStart([
+    'title' => $rayhanRPPageTitle,
+    'subtitle' => $rayhanRPPageSubtitle,
+    'page_key' => 'tugas',
+    'admin' => $rayhanRPAdmin,
+]);
 ?>
-<!DOCTYPE html>
-<html lang="id">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kelola Tugas - Bot SiRey</title>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: "Segoe UI", Tahoma, sans-serif;
-            background: #eef3fb;
-            color: #0f172a;
-        }
-
-        .container {
-            max-width: 1240px;
-            margin: 0 auto;
-            padding: 22px;
-        }
-
-        .topbar {
-            background: #fff;
-            border: 1px solid #dbe4f0;
-            border-radius: 14px;
-            padding: 14px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
-        .title {
-            margin: 0;
-            font-size: 1.2rem;
-        }
-
-        .subtitle {
-            margin: 4px 0 0;
-            font-size: .9rem;
-            color: #64748b;
-        }
-
-        .actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .btn-link {
-            text-decoration: none;
-            border: 1px solid #bfdbfe;
-            border-radius: 10px;
-            padding: 9px 12px;
-            font-size: .9rem;
-            font-weight: 600;
-            color: #1d4ed8;
-            background: #fff;
-        }
-
-        .btn-link:hover {
-            background: #eff6ff;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: 390px 1fr;
-            gap: 14px;
-        }
-
-        .card {
-            background: #fff;
-            border: 1px solid #dbe4f0;
-            border-radius: 14px;
-            padding: 16px;
-        }
-
-        .card h3 {
-            margin: 0;
-            font-size: 1rem;
-        }
-
-        .note {
-            margin: 6px 0 0;
-            color: #64748b;
-            font-size: .86rem;
-        }
-
-        .field {
-            margin-top: 12px;
-        }
-
-        .field label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: .88rem;
-            font-weight: 600;
-        }
-
-        .field input,
-        .field select,
-        .field textarea {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            padding: 10px 11px;
-            font-size: .92rem;
-            outline: none;
-            background: #fff;
-        }
-
-        .field textarea {
-            min-height: 88px;
-            resize: vertical;
-        }
-
-        .btn-primary {
-            margin-top: 14px;
-            width: 100%;
-            border: 0;
-            border-radius: 10px;
-            padding: 11px 12px;
-            font-size: .92rem;
-            font-weight: 600;
-            color: #fff;
-            background: #1664d6;
-            cursor: pointer;
-        }
-
-        .btn-primary:hover {
-            background: #1252ae;
-        }
-
-        .msg {
-            margin-top: 12px;
-            border-radius: 10px;
-            padding: 10px 11px;
-            font-size: .9rem;
-        }
-
-        .msg-err {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .msg-ok {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .table-wrap {
-            overflow-x: auto;
-            margin-top: 12px;
-        }
-
-        table {
-            width: 100%;
-            min-width: 860px;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            border-bottom: 1px solid #dbe4f0;
-            padding: 10px 8px;
-            text-align: left;
-            vertical-align: top;
-            font-size: .88rem;
-        }
-
-        th {
-            text-transform: uppercase;
-            font-size: .78rem;
-            letter-spacing: .04em;
-            color: #64748b;
-        }
-
-        .tag {
-            display: inline-block;
-            border-radius: 999px;
-            padding: 3px 8px;
-            font-size: .76rem;
-            font-weight: 600;
-            color: #1e3a8a;
-            background: #dbeafe;
-        }
-
-        .table-actions {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-
-        .btn-sm {
-            border: 1px solid transparent;
-            border-radius: 8px;
-            padding: 7px 10px;
-            font-size: .82rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            background: #fff;
-        }
-
-        .btn-edit {
-            border-color: #bfdbfe;
-            color: #1d4ed8;
-            background: #eff6ff;
-        }
-
-        .btn-delete {
-            border-color: #fecaca;
-            color: #b42318;
-            background: #fff1f2;
-        }
-
-        .status {
-            display: inline-block;
-            border-radius: 999px;
-            padding: 3px 8px;
-            font-size: .76rem;
-            font-weight: 600;
-        }
-
-        .status-dikumpulkan {
-            color: #1e3a8a;
-            background: #dbeafe;
-        }
-
-        .status-dinilai {
-            color: #166534;
-            background: #dcfce7;
-        }
-
-        .status-revisi,
-        .status-terlambat {
-            color: #9a3412;
-            background: #ffedd5;
-        }
-
-        .small {
-            color: #64748b;
-            font-size: .8rem;
-        }
-
-        .submission-card {
-            margin-top: 14px;
-        }
-
-        .grade-form {
-            display: grid;
-            gap: 6px;
-        }
-
-        .grade-form input,
-        .grade-form select,
-        .grade-form textarea {
-            width: 100%;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            padding: 7px 8px;
-            font-size: .82rem;
-            background: #fff;
-            outline: none;
-        }
-
-        .grade-form textarea {
-            min-height: 52px;
-            resize: vertical;
-        }
-
-        .grade-form button {
-            border: 0;
-            border-radius: 8px;
-            padding: 8px;
-            font-size: .82rem;
-            font-weight: 600;
-            color: #fff;
-            background: #1664d6;
-            cursor: pointer;
-        }
-
-        @media (max-width: 1080px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-
-<body>
-    <div class="container">
-        <section class="topbar">
-            <div>
-                <h1 class="title">Kelola Tugas</h1>
-                <p class="subtitle">Login sebagai <?php echo htmlspecialchars($rayhanRPAdminNisNip, ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($rayhanRPAdminRole, ENT_QUOTES, 'UTF-8'); ?>)</p>
-            </div>
-            <div class="actions">
-                <a class="btn-link" href="adminWeb_rayhanRP.php">Dashboard</a>
-                <a class="btn-link" href="grup_rayhanRP.php">Kelola Grup</a>
-                <a class="btn-link" href="jadwal_rayhanRP.php">Kelola Jadwal</a>
-            </div>
-        </section>
-
-        <section class="grid">
-            <article class="card">
-                <h3><?php echo (int)$rayhanRPForm['id_tugas'] > 0 ? 'Edit Tugas' : 'Tambah Tugas'; ?></h3>
-                <p class="note">Siswa mengumpulkan via Telegram: <strong>/kumpul ID_TUGAS</strong>.</p>
-                <?php if ($rayhanRPError !== ''): ?>
-                    <div class="msg msg-err"><?php echo htmlspecialchars($rayhanRPError, ENT_QUOTES, 'UTF-8'); ?></div>
-                <?php endif; ?>
-                <?php if ($rayhanRPSuccess !== ''): ?>
-                    <div class="msg msg-ok"><?php echo htmlspecialchars($rayhanRPSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
-                <?php endif; ?>
-                <form method="post" action="">
-                    <input type="hidden" name="action" value="<?php echo (int)$rayhanRPForm['id_tugas'] > 0 ? 'update' : 'create'; ?>">
-                    <input type="hidden" name="id_tugas" value="<?php echo (int)$rayhanRPForm['id_tugas']; ?>">
-                    <div class="field">
-                        <label for="grup_id">Grup</label>
-                        <select id="grup_id" name="grup_id" required>
-                            <option value="">Pilih grup</option>
-                            <?php foreach ($grupOptions as $gr): ?>
-                                <option value="<?php echo (int)$gr['id_grup']; ?>" <?php echo ((int)$rayhanRPForm['grup_id'] === (int)$gr['id_grup']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars((string)$gr['nama_grup'], ENT_QUOTES, 'UTF-8'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label for="jadwal_id">Jadwal (opsional)</label>
-                        <select id="jadwal_id" name="jadwal_id">
-                            <option value="0">Tanpa jadwal</option>
-                            <?php foreach ($jadwalOptions as $jd): ?>
-                                <option value="<?php echo (int)$jd['id_jadwal']; ?>" data-grup="<?php echo (int)$jd['grup_id']; ?>" <?php echo ((int)$rayhanRPForm['jadwal_id'] === (int)$jd['id_jadwal']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars((string)$jd['nama_grup'], ENT_QUOTES, 'UTF-8'); ?> - <?php echo htmlspecialchars((string)$jd['judul'], ENT_QUOTES, 'UTF-8'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label for="judul">Judul Tugas</label>
-                        <input type="text" id="judul" name="judul" required value="<?php echo htmlspecialchars((string)$rayhanRPForm['judul'], ENT_QUOTES, 'UTF-8'); ?>">
-                    </div>
-                    <div class="field">
-                        <label for="deskripsi">Deskripsi</label>
-                        <textarea id="deskripsi" name="deskripsi"><?php echo htmlspecialchars((string)$rayhanRPForm['deskripsi'], ENT_QUOTES, 'UTF-8'); ?></textarea>
-                    </div>
-                    <div class="field">
-                        <label for="tenggat">Tenggat</label>
-                        <input type="datetime-local" id="tenggat" name="tenggat" required value="<?php echo htmlspecialchars((string)$rayhanRPForm['tenggat'], ENT_QUOTES, 'UTF-8'); ?>">
-                    </div>
+<div class="page-stack">
+    <section class="grid">
+        <article class="card">
+            <h3><?php echo (int)$rayhanRPForm['id_tugas'] > 0 ? 'Edit Tugas' : 'Tambah Tugas'; ?></h3>
+            <p class="note">Siswa mengumpulkan via Telegram: <strong>/kumpul ID_TUGAS</strong>.</p>
+            <?php if ($rayhanRPError !== ''): ?>
+                <div class="msg msg-err"><?php echo htmlspecialchars($rayhanRPError, ENT_QUOTES, 'UTF-8'); ?></div>
+            <?php endif; ?>
+            <?php if ($rayhanRPSuccess !== ''): ?>
+                <div class="msg msg-ok"><?php echo htmlspecialchars($rayhanRPSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
+            <?php endif; ?>
+            <form method="post" action="">
+                <input type="hidden" name="action" value="<?php echo (int)$rayhanRPForm['id_tugas'] > 0 ? 'update' : 'create'; ?>">
+                <input type="hidden" name="id_tugas" value="<?php echo (int)$rayhanRPForm['id_tugas']; ?>">
+                <div class="field">
+                    <label for="grup_id">Grup</label>
+                    <select id="grup_id" name="grup_id" required>
+                        <option value="">Pilih grup</option>
+                        <?php foreach ($grupOptions as $gr): ?>
+                            <option value="<?php echo (int)$gr['id_grup']; ?>" <?php echo ((int)$rayhanRPForm['grup_id'] === (int)$gr['id_grup']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars((string)$gr['nama_grup'], ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="jadwal_id">Jadwal (opsional)</label>
+                    <select id="jadwal_id" name="jadwal_id">
+                        <option value="0">Tanpa jadwal</option>
+                        <?php foreach ($jadwalOptions as $jd): ?>
+                            <option value="<?php echo (int)$jd['id_jadwal']; ?>" data-grup="<?php echo (int)$jd['grup_id']; ?>" <?php echo ((int)$rayhanRPForm['jadwal_id'] === (int)$jd['id_jadwal']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars((string)$jd['nama_grup'], ENT_QUOTES, 'UTF-8'); ?> - <?php echo htmlspecialchars((string)$jd['judul'], ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="judul">Judul Tugas</label>
+                    <input type="text" id="judul" name="judul" required value="<?php echo htmlspecialchars((string)$rayhanRPForm['judul'], ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="field">
+                    <label for="deskripsi">Deskripsi</label>
+                    <textarea id="deskripsi" name="deskripsi"><?php echo htmlspecialchars((string)$rayhanRPForm['deskripsi'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                </div>
+                <div class="field">
+                    <label for="tenggat">Tenggat</label>
+                    <input type="datetime-local" id="tenggat" name="tenggat" required value="<?php echo htmlspecialchars((string)$rayhanRPForm['tenggat'], ENT_QUOTES, 'UTF-8'); ?>">
+                </div>
+                <div class="field-actions">
                     <button class="btn-primary" type="submit"><?php echo (int)$rayhanRPForm['id_tugas'] > 0 ? 'Simpan Perubahan' : 'Tambah Tugas'; ?></button>
-                </form>
-            </article>
-
-            <article class="card">
-                <h3>Daftar Tugas</h3>
-                <p class="note">Gunakan aksi <strong>Lihat Pengumpulan</strong> untuk memberi nilai.</p>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>No</th>
-                                <th>Tugas</th>
-                                <th>Grup</th>
-                                <th>Tenggat</th>
-                                <th>Pembuat</th>
-                                <th>Pengumpulan</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($tugasList) === 0): ?>
-                                <tr>
-                                    <td colspan="7">Belum ada data tugas.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php $no = 1; ?>
-                                <?php foreach ($tugasList as $tg): ?>
-                                    <tr>
-                                        <td><?php echo $no++; ?></td>
-                                        <td>
-                                            <strong>#<?php echo (int)$tg['id_tugas']; ?> - <?php echo htmlspecialchars((string)$tg['judul'], ENT_QUOTES, 'UTF-8'); ?></strong>
-                                            <?php if (!empty($tg['deskripsi'])): ?>
-                                                <br><span class="small"><?php echo htmlspecialchars((string)$tg['deskripsi'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td><span class="tag"><?php echo htmlspecialchars((string)$tg['nama_grup'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-                                        <td><?php echo htmlspecialchars((string)$tg['tenggat'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                        <td><?php echo htmlspecialchars((string)$tg['pembuat_nis_nip'], ENT_QUOTES, 'UTF-8'); ?><br><span class="small"><?php echo htmlspecialchars((string)$tg['pembuat_role'], ENT_QUOTES, 'UTF-8'); ?></span></td>
-                                        <td><?php echo (int)$tg['total_pengumpulan']; ?> masuk<br><span class="small"><?php echo (int)$tg['total_dinilai']; ?> dinilai</span></td>
-                                        <td>
-                                            <div class="table-actions">
-                                                <a class="btn-sm btn-edit" href="?edit=<?php echo (int)$tg['id_tugas']; ?>">Edit</a>
-                                                <a class="btn-sm btn-edit" href="?detail=<?php echo (int)$tg['id_tugas']; ?>">Lihat Pengumpulan</a>
-                                                <form method="post" action="" onsubmit="return confirm('Hapus tugas ini?');">
-                                                    <input type="hidden" name="action" value="delete">
-                                                    <input type="hidden" name="id_tugas" value="<?php echo (int)$tg['id_tugas']; ?>">
-                                                    <button class="btn-sm btn-delete" type="submit">Hapus</button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                    <?php if ((int)$rayhanRPForm['id_tugas'] > 0): ?>
+                        <a class="btn secondary" href="tugas_rayhanRP.php">Batal Edit</a>
+                    <?php endif; ?>
                 </div>
-            </article>
-        </section>
+            </form>
+        </article>
 
-        <?php if ($detailId > 0): ?>
-            <section class="card submission-card">
-                <h3>Pengumpulan Tugas: #<?php echo (int)$detailId; ?> - <?php echo htmlspecialchars((string)$detailTitle, ENT_QUOTES, 'UTF-8'); ?></h3>
-                <p class="note">Tenggat: <?php echo htmlspecialchars((string)$detailDeadline, ENT_QUOTES, 'UTF-8'); ?></p>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
+        <article class="card">
+            <h3>Daftar Tugas</h3>
+            <p class="note">Gunakan aksi <strong>Lihat Pengumpulan</strong> untuk memberi nilai.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Tugas</th>
+                            <th>Grup</th>
+                            <th>Tenggat</th>
+                            <th>Pembuat</th>
+                            <th>Pengumpulan</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($tugasList) === 0): ?>
                             <tr>
-                                <th>No</th>
-                                <th>Siswa/User</th>
-                                <th>Waktu Kumpul</th>
-                                <th>File</th>
-                                <th>Status</th>
-                                <th>Nilai</th>
+                                <td colspan="7">Belum ada data tugas.</td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (count($pengumpulanList) === 0): ?>
+                        <?php else: ?>
+                            <?php $no = 1; ?>
+                            <?php foreach ($tugasList as $tg): ?>
                                 <tr>
-                                    <td colspan="6">Belum ada pengumpulan untuk tugas ini.</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php $noSub = 1; ?>
-                                <?php foreach ($pengumpulanList as $pg): ?>
-                                    <?php
-                                    $st = strtolower(trim((string)$pg['status']));
-                                    if ($st === '') {
-                                        $st = 'dikumpulkan';
-                                    }
-                                    $nilaiTampil = ($pg['nilai'] === null || $pg['nilai'] === '') ? '' : number_format((float)$pg['nilai'], 2, '.', '');
-                                    $sizeLabel = ((int)$pg['file_size'] > 0) ? number_format(((int)$pg['file_size']) / 1024, 2) . ' KB' : '-';
-                                    ?>
-                                    <tr>
-                                        <td><?php echo $noSub++; ?></td>
-                                        <td><?php echo htmlspecialchars((string)$pg['nis_nip'], ENT_QUOTES, 'UTF-8'); ?><br><span class="small"><?php echo htmlspecialchars((string)$pg['role'], ENT_QUOTES, 'UTF-8'); ?> | akun_id <?php echo (int)$pg['akun_id']; ?></span></td>
-                                        <td><?php echo htmlspecialchars((string)$pg['submitted_at'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                        <td>
-                                            <a href="../download_tugas_file_rayhanRP.php?id=<?php echo (int)$pg['id_pengumpulan']; ?>" target="_blank" rel="noopener">Unduh File</a>
-                                            <br><span class="small"><?php echo htmlspecialchars((string)($pg['nama_file_asli'] ?: '-'), ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <br><span class="small"><?php echo htmlspecialchars((string)($pg['file_mime'] ?: '-'), ENT_QUOTES, 'UTF-8'); ?> | <?php echo htmlspecialchars($sizeLabel, ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <?php if (!empty($pg['caption'])): ?>
-                                                <br><span class="small">Catatan siswa: <?php echo htmlspecialchars((string)$pg['caption'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <span class="status status-<?php echo htmlspecialchars($st, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars(ucfirst($st), ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <?php if (!empty($pg['catatan_guru'])): ?>
-                                                <br><span class="small">Catatan guru: <?php echo htmlspecialchars((string)$pg['catatan_guru'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <form class="grade-form" method="post" action="?detail=<?php echo (int)$detailId; ?>">
-                                                <input type="hidden" name="action" value="grade">
-                                                <input type="hidden" name="id_pengumpulan" value="<?php echo (int)$pg['id_pengumpulan']; ?>">
-                                                <select name="status" required>
-                                                    <option value="dikumpulkan" <?php echo $st === 'dikumpulkan' ? 'selected' : ''; ?>>Dikumpulkan</option>
-                                                    <option value="dinilai" <?php echo $st === 'dinilai' ? 'selected' : ''; ?>>Dinilai</option>
-                                                    <option value="revisi" <?php echo $st === 'revisi' ? 'selected' : ''; ?>>Perlu Revisi</option>
-                                                    <option value="terlambat" <?php echo $st === 'terlambat' ? 'selected' : ''; ?>>Terlambat</option>
-                                                </select>
-                                                <input type="number" name="nilai" min="0" max="100" step="0.01" value="<?php echo htmlspecialchars($nilaiTampil, ENT_QUOTES, 'UTF-8'); ?>" placeholder="Nilai 0-100">
-                                                <textarea name="catatan_guru" placeholder="Catatan guru"><?php echo htmlspecialchars((string)$pg['catatan_guru'], ENT_QUOTES, 'UTF-8'); ?></textarea>
-                                                <button type="submit">Simpan</button>
+                                    <td><?php echo $no++; ?></td>
+                                    <td>
+                                        <strong>#<?php echo (int)$tg['id_tugas']; ?> - <?php echo htmlspecialchars((string)$tg['judul'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                                        <?php if (!empty($tg['deskripsi'])): ?>
+                                            <br><span class="small"><?php echo htmlspecialchars((string)$tg['deskripsi'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><span class="tag"><?php echo htmlspecialchars((string)$tg['nama_grup'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                    <td><?php echo htmlspecialchars((string)$tg['tenggat'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td><?php echo htmlspecialchars((string)$tg['pembuat_nis_nip'], ENT_QUOTES, 'UTF-8'); ?><br><span class="small"><?php echo htmlspecialchars((string)$tg['pembuat_role'], ENT_QUOTES, 'UTF-8'); ?></span></td>
+                                    <td><?php echo (int)$tg['total_pengumpulan']; ?> masuk<br><span class="small"><?php echo (int)$tg['total_dinilai']; ?> dinilai</span></td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <a class="btn-sm btn-edit" href="?edit=<?php echo (int)$tg['id_tugas']; ?>">Edit</a>
+                                            <a class="btn-sm btn-edit" href="?detail=<?php echo (int)$tg['id_tugas']; ?>">Lihat Pengumpulan</a>
+                                            <form method="post" action="" onsubmit="return confirm('Hapus tugas ini?');">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="id_tugas" value="<?php echo (int)$tg['id_tugas']; ?>">
+                                                <button class="btn-sm btn-delete" type="submit">Hapus</button>
                                             </form>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        <?php endif; ?>
-    </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+    </section>
 
-    <script>
-        (function() {
-            var grup = document.getElementById('grup_id');
-            var jadwal = document.getElementById('jadwal_id');
-            if (!grup || !jadwal) return;
-            function filterJadwal() {
-                var gid = grup.value;
-                var cur = jadwal.value;
-                var okCur = false;
-                for (var i = 0; i < jadwal.options.length; i++) {
-                    var o = jadwal.options[i];
-                    if (i === 0) {
-                        o.hidden = false;
-                        continue;
-                    }
-                    var show = gid === '' || o.getAttribute('data-grup') === gid;
-                    o.hidden = !show;
-                    if (show && o.value === cur) okCur = true;
+    <?php if ($detailId > 0): ?>
+        <section class="card submission-card">
+            <h3>Pengumpulan Tugas: #<?php echo (int)$detailId; ?> - <?php echo htmlspecialchars((string)$detailTitle, ENT_QUOTES, 'UTF-8'); ?></h3>
+            <p class="note">Tenggat: <?php echo htmlspecialchars((string)$detailDeadline, ENT_QUOTES, 'UTF-8'); ?></p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>Siswa/User</th>
+                            <th>Waktu Kumpul</th>
+                            <th>File</th>
+                            <th>Status</th>
+                            <th>Nilai</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($pengumpulanList) === 0): ?>
+                            <tr>
+                                <td colspan="6">Belum ada pengumpulan untuk tugas ini.</td>
+                            </tr>
+                        <?php else: ?>
+                            <?php $noSub = 1; ?>
+                            <?php foreach ($pengumpulanList as $pg): ?>
+                                <?php
+                                $st = strtolower(trim((string)$pg['status']));
+                                if ($st === '') {
+                                    $st = 'dikumpulkan';
+                                }
+                                $nilaiTampil = ($pg['nilai'] === null || $pg['nilai'] === '') ? '' : number_format((float)$pg['nilai'], 2, '.', '');
+                                $sizeLabel = ((int)$pg['file_size'] > 0) ? number_format(((int)$pg['file_size']) / 1024, 2) . ' KB' : '-';
+                                ?>
+                                <tr>
+                                    <td><?php echo $noSub++; ?></td>
+                                    <td><?php echo htmlspecialchars((string)$pg['nis_nip'], ENT_QUOTES, 'UTF-8'); ?><br><span class="small"><?php echo htmlspecialchars((string)$pg['role'], ENT_QUOTES, 'UTF-8'); ?> | akun_id <?php echo (int)$pg['akun_id']; ?></span></td>
+                                    <td><?php echo htmlspecialchars((string)$pg['submitted_at'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td>
+                                        <a href="../download_tugas_file_rayhanRP.php?id=<?php echo (int)$pg['id_pengumpulan']; ?>" target="_blank" rel="noopener">Unduh File</a>
+                                        <br><span class="small"><?php echo htmlspecialchars((string)($pg['nama_file_asli'] ?: '-'), ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <br><span class="small"><?php echo htmlspecialchars((string)($pg['file_mime'] ?: '-'), ENT_QUOTES, 'UTF-8'); ?> | <?php echo htmlspecialchars($sizeLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php if (!empty($pg['caption'])): ?>
+                                            <br><span class="small">Catatan siswa: <?php echo htmlspecialchars((string)$pg['caption'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <span class="status status-<?php echo htmlspecialchars($st, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars(ucfirst($st), ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php if (!empty($pg['catatan_guru'])): ?>
+                                            <br><span class="small">Catatan guru: <?php echo htmlspecialchars((string)$pg['catatan_guru'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <form class="grade-form" method="post" action="?detail=<?php echo (int)$detailId; ?>">
+                                            <input type="hidden" name="action" value="grade">
+                                            <input type="hidden" name="id_pengumpulan" value="<?php echo (int)$pg['id_pengumpulan']; ?>">
+                                            <select name="status" required>
+                                                <option value="dikumpulkan" <?php echo $st === 'dikumpulkan' ? 'selected' : ''; ?>>Dikumpulkan</option>
+                                                <option value="dinilai" <?php echo $st === 'dinilai' ? 'selected' : ''; ?>>Dinilai</option>
+                                                <option value="revisi" <?php echo $st === 'revisi' ? 'selected' : ''; ?>>Perlu Revisi</option>
+                                                <option value="terlambat" <?php echo $st === 'terlambat' ? 'selected' : ''; ?>>Terlambat</option>
+                                            </select>
+                                            <input type="number" name="nilai" min="0" max="100" step="0.01" value="<?php echo htmlspecialchars($nilaiTampil, ENT_QUOTES, 'UTF-8'); ?>" placeholder="Nilai 0-100">
+                                            <textarea name="catatan_guru" placeholder="Catatan guru"><?php echo htmlspecialchars((string)$pg['catatan_guru'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                            <button type="submit">Simpan</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    <?php endif; ?>
+</div>
+
+<script>
+    (function() {
+        var grup = document.getElementById('grup_id');
+        var jadwal = document.getElementById('jadwal_id');
+        if (!grup || !jadwal) return;
+        function filterJadwal() {
+            var gid = grup.value;
+            var cur = jadwal.value;
+            var okCur = false;
+            for (var i = 0; i < jadwal.options.length; i++) {
+                var o = jadwal.options[i];
+                if (i === 0) {
+                    o.hidden = false;
+                    continue;
                 }
-                if (!okCur && cur !== '0') {
-                    jadwal.value = '0';
-                }
+                var show = gid === '' || o.getAttribute('data-grup') === gid;
+                o.hidden = !show;
+                if (show && o.value === cur) okCur = true;
             }
-            grup.addEventListener('change', filterJadwal);
-            filterJadwal();
-        })();
-    </script>
-</body>
-
-</html>
+            if (!okCur && cur !== '0') {
+                jadwal.value = '0';
+            }
+        }
+        grup.addEventListener('change', filterJadwal);
+        filterJadwal();
+    })();
+</script>
+<?php rayhanRPRenderAdminLayoutEnd(); ?>

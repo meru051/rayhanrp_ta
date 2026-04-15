@@ -1,26 +1,24 @@
 <?php
-$rayhanRPToken = "8219558178:AAGONLX_MZxkGWHLwygUB-CaMM-_PjYJv3k";
-$rayhanRPapiLink = "https://api.telegram.org/bot$rayhanRPToken/";
+require_once __DIR__ . '/common_rayhanRP.php';
 
-function sendMessage($rayhanRPChat_id, $rayhanRPMessage, $rayhanRPKeyboard = null)
+$rayhanRPToken = rayhanRPGetTelegramBotToken();
+$rayhanRPapiLink = $rayhanRPToken === '' ? '' : "https://api.telegram.org/bot{$rayhanRPToken}/";
+
+function sendMessage($rayhanRPChatId, $rayhanRPMessage, $rayhanRPKeyboard = null)
 {
-    global $rayhanRPapiLink;
-    $rayhanRPparams = [
-        'chat_id' => $rayhanRPChat_id,
-        'text' => $rayhanRPMessage
+    $rayhanRPParams = [
+        'chat_id' => $rayhanRPChatId,
+        'text' => $rayhanRPMessage,
     ];
 
-    if ($rayhanRPKeyboard) {
-        $rayhanRPparams['reply_markup'] = json_encode($rayhanRPKeyboard);
+    if ($rayhanRPKeyboard === null && isset($GLOBALS['rayhanRPDefaultKeyboard']) && is_array($GLOBALS['rayhanRPDefaultKeyboard'])) {
+        $rayhanRPKeyboard = $GLOBALS['rayhanRPDefaultKeyboard'];
     }
 
-    $rayhanRPContext = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 10
-        ]
-    ]);
+    if ($rayhanRPKeyboard) {
+        $rayhanRPParams['reply_markup'] = json_encode($rayhanRPKeyboard);
+    }
 
-    @file_get_contents($rayhanRPapiLink . "sendMessage?" . http_build_query($rayhanRPparams), false, $rayhanRPContext);
+    return rayhanRPCallTelegramApi('sendMessage', $rayhanRPParams) !== false;
 }
-?>
+

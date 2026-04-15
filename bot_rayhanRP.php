@@ -2,7 +2,7 @@
 require_once 'function/function_bot_rayhanRP.php';
 require_once 'koneksi_rayhanRP.php';
 
-$rayhanRPStateFile = __DIR__ . '/data/state.json';
+$rayhanRPStateFile = (string)rayhanRPGetConfigValue('app.state_file', __DIR__ . '/data/state.json');
 
 function rayhanRP_loadStates()
 {
@@ -54,32 +54,7 @@ function rayhanRP_isCommand($rayhanRPText, $rayhanRPCommand)
 
 function rayhanRP_ensureTugasPengumpulanTable($databaseRayhanRP)
 {
-    $rayhanRPSql = "CREATE TABLE IF NOT EXISTS tugas_pengumpulan (
-        id_pengumpulan INT AUTO_INCREMENT PRIMARY KEY,
-        tugas_id INT NOT NULL,
-        akun_id INT NOT NULL,
-        telegram_chat_id BIGINT DEFAULT NULL,
-        file_type VARCHAR(20) NOT NULL DEFAULT 'document',
-        telegram_file_id VARCHAR(255) NOT NULL,
-        telegram_file_unique_id VARCHAR(255) DEFAULT NULL,
-        telegram_file_path VARCHAR(255) DEFAULT NULL,
-        nama_file_asli VARCHAR(255) DEFAULT NULL,
-        file_mime VARCHAR(120) DEFAULT NULL,
-        file_size BIGINT DEFAULT NULL,
-        file_lokal VARCHAR(255) DEFAULT NULL,
-        caption TEXT DEFAULT NULL,
-        status ENUM('dikumpulkan','dinilai','revisi','terlambat') NOT NULL DEFAULT 'dikumpulkan',
-        nilai DECIMAL(5,2) DEFAULT NULL,
-        catatan_guru TEXT DEFAULT NULL,
-        submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        graded_at DATETIME DEFAULT NULL,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_tugas_akun (tugas_id, akun_id),
-        KEY idx_tp_akun (akun_id),
-        CONSTRAINT fk_tp_tugas FOREIGN KEY (tugas_id) REFERENCES tugas (id_tugas) ON DELETE CASCADE ON UPDATE CASCADE,
-        CONSTRAINT fk_tp_akun FOREIGN KEY (akun_id) REFERENCES akun (akun_id) ON DELETE CASCADE ON UPDATE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
-    return mysqli_query($databaseRayhanRP, $rayhanRPSql) !== false;
+    return rayhanRPRunMigrations($databaseRayhanRP) && rayhanRPDbTableExists($databaseRayhanRP, 'tugas_pengumpulan');
 }
 
 function rayhanRP_parseKumpulCommandId($rayhanRPText)
@@ -93,6 +68,145 @@ function rayhanRP_parseKumpulCommandId($rayhanRPText)
     return (int)$rayhanRPMatches[1];
 }
 
+function rayhanRP_getCommandArgs($rayhanRPText, $rayhanRPCommand)
+{
+    $rayhanRPPattern = '/^' . preg_quote($rayhanRPCommand, '/') . '(@[A-Za-z0-9_]+)?(?:\s+(.*))?\s*$/i';
+    if (preg_match($rayhanRPPattern, trim($rayhanRPText), $rayhanRPMatches) !== 1) {
+        return null;
+    }
+    return trim((string)($rayhanRPMatches[2] ?? ''));
+}
+
+function rayhanRP_isPreferensiCommand($rayhanRPText)
+{
+    return rayhanRP_isCommand($rayhanRPText, '/prefrensi') || rayhanRP_isCommand($rayhanRPText, '/preferensi');
+}
+
+function rayhanRP_getPreferensiArgs($rayhanRPText)
+{
+    if (rayhanRP_isCommand($rayhanRPText, '/prefrensi')) {
+        return trim((string)rayhanRP_getCommandArgs($rayhanRPText, '/prefrensi'));
+    }
+    return trim((string)rayhanRP_getCommandArgs($rayhanRPText, '/preferensi'));
+}
+
+function rayhanRP_buildStartKeyboard()
+{
+    return [
+        'keyboard' => [
+            [['text' => '/start'], ['text' => '/panduan']],
+            [['text' => '/stop']],
+        ],
+        'resize_keyboard' => true,
+        'one_time_keyboard' => false,
+        'is_persistent' => true,
+    ];
+}
+
+function rayhanRP_buildMainKeyboard()
+{
+    return [
+        'keyboard' => [
+            [['text' => '/menu'], ['text' => '/tugas']],
+            [['text' => '/kumpul'], ['text' => '/jadwal']],
+            [['text' => '/preferensi']],
+            [['text' => '/panduan'], ['text' => '/stop']],
+        ],
+        'resize_keyboard' => true,
+        'one_time_keyboard' => false,
+        'is_persistent' => true,
+    ];
+}
+
+function rayhanRP_getMainMenuText()
+{
+    return "Menu Bot SiRey:\n"
+        . "1. /tugas untuk lihat tugas\n"
+        . "2. /kumpul untuk kirim tugas\n"
+        . "3. /jadwal untuk lihat jadwal\n"
+        . "4. /preferensi untuk atur pengingat\n\n"
+        . "Bingung mulai dari mana? Ketik /panduan.\n"
+        . "Butuh batal? Ketik /stop.";
+}
+
+function rayhanRP_getHelpText()
+{
+    return "Panduan singkat:\n"
+        . "1. Ketik /start\n"
+        . "2. Masukkan NIS/NIP\n"
+        . "3. Masukkan password\n"
+        . "4. Pilih menu dari keyboard\n\n"
+        . "Perintah utama:\n"
+        . "/menu - tampilkan menu\n"
+        . "/tugas - daftar tugas Anda\n"
+        . "/kumpul [id] - kirim tugas\n"
+        . "/jadwal - jadwal grup Anda\n"
+        . "/preferensi - atur pengingat\n"
+        . "/stop - batalkan proses\n\n"
+        . "Contoh:\n"
+        . "- /kumpul 3\n"
+        . "- /preferensi custom 45\n"
+        . "- /preferensi off";
+}
+
+function rayhanRP_sendMainMenu($rayhanRPChatId)
+{
+    sendMessage($rayhanRPChatId, rayhanRP_getMainMenuText(), rayhanRP_buildMainKeyboard());
+}
+
+function rayhanRP_sendNeedLogin($rayhanRPChatId)
+{
+    sendMessage($rayhanRPChatId, "Anda belum masuk. Ketik /start lalu ikuti langkah login.", rayhanRP_buildStartKeyboard());
+}
+
+function rayhanRP_ensureAkunTelegramTable($databaseRayhanRP)
+{
+    return rayhanRPRunMigrations($databaseRayhanRP) && rayhanRPDbTableExists($databaseRayhanRP, 'akun_telegram');
+}
+
+function rayhanRP_dbColumnExists($databaseRayhanRP, $rayhanRPTableName, $rayhanRPColumnName)
+{
+    return rayhanRPDbColumnExists($databaseRayhanRP, $rayhanRPTableName, $rayhanRPColumnName);
+}
+
+function rayhanRP_ensurePreferensiSchema($databaseRayhanRP)
+{
+    return rayhanRPRunMigrations($databaseRayhanRP) && rayhanRPDbTableExists($databaseRayhanRP, 'prefrensi_user');
+}
+
+function rayhanRP_getLatestPreferensiByAkun($databaseRayhanRP, $rayhanRPAkunId)
+{
+    return rayhanRPFetchPreferensiByAkun($databaseRayhanRP, $rayhanRPAkunId);
+}
+
+function rayhanRP_ensurePreferensiRow($databaseRayhanRP, $rayhanRPAkunId)
+{
+    return rayhanRPEnsurePreferensiRowCommon($databaseRayhanRP, $rayhanRPAkunId);
+}
+
+function rayhanRP_linkAkunTelegram($databaseRayhanRP, $rayhanRPAkunId, $rayhanRPChatId)
+{
+    return rayhanRP_ensureAkunTelegramTable($databaseRayhanRP)
+        && rayhanRPUpsertAkunTelegram($databaseRayhanRP, $rayhanRPAkunId, $rayhanRPChatId);
+}
+
+function rayhanRP_formatPreferensiMessage($rayhanRPPreferensi)
+{
+    $rayhanRPStatus = ((int)($rayhanRPPreferensi['pengingat_aktif'] ?? 1) === 1) ? 'Aktif' : 'Nonaktif';
+    $rayhanRPOffset = (int)($rayhanRPPreferensi['offset_custom_menit'] ?? 30);
+    if ($rayhanRPOffset <= 0) {
+        $rayhanRPOffset = 30;
+    }
+
+    return "Preferensi pengingat Anda:\n"
+        . "Status: {$rayhanRPStatus}\n"
+        . "Waktu pengingat: {$rayhanRPOffset} menit sebelum jadwal atau tenggat\n\n"
+        . "Gunakan salah satu perintah ini:\n"
+        . "/preferensi on - aktifkan pengingat\n"
+        . "/preferensi off - matikan pengingat\n"
+        . "/preferensi custom <menit> - atur menit pengingat\n"
+        . "/preferensi reset - kembali ke 30 menit";
+}
 function rayhanRP_fetchTaskForUser($databaseRayhanRP, $rayhanRPTaskId, $rayhanRPAkunId)
 {
     $rayhanRPSql = "
@@ -126,48 +240,57 @@ function rayhanRP_fetchTaskForUser($databaseRayhanRP, $rayhanRPTaskId, $rayhanRP
     return $rayhanRPData;
 }
 
-function rayhanRP_fetchTelegramFilePath($rayhanRPFileId)
+function rayhanRP_startKumpulByTask($databaseRayhanRP, $rayhanRPChatId, $rayhanRPAuthUser, $rayhanRPTaskId)
 {
-    global $rayhanRPapiLink;
+    if (!$databaseRayhanRP) {
+        sendMessage($rayhanRPChatId, "Koneksi database gagal. Coba lagi nanti.");
+        return false;
+    }
 
-    $rayhanRPUrl = $rayhanRPapiLink . 'getFile?' . http_build_query(['file_id' => $rayhanRPFileId]);
-    $rayhanRPContext = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 12
-        ]
+    if (!rayhanRP_ensureTugasPengumpulanTable($databaseRayhanRP)) {
+        sendMessage($rayhanRPChatId, "Tabel pengumpulan tugas belum siap.");
+        return false;
+    }
+
+    $rayhanRPAkunId = isset($rayhanRPAuthUser['akun_id']) ? (int)$rayhanRPAuthUser['akun_id'] : 0;
+    if ($rayhanRPAkunId <= 0) {
+        sendMessage($rayhanRPChatId, "Sesi login tidak lengkap. Silakan login ulang dengan /start.");
+        return false;
+    }
+
+    $rayhanRPTaskData = rayhanRP_fetchTaskForUser($databaseRayhanRP, $rayhanRPTaskId, $rayhanRPAkunId);
+    if (!$rayhanRPTaskData) {
+        sendMessage($rayhanRPChatId, "ID tugas tidak ditemukan atau tidak termasuk grup Anda.");
+        return false;
+    }
+
+    rayhanRP_setState($rayhanRPChatId, [
+        'step' => 'awaiting_tugas_file',
+        'auth' => $rayhanRPAuthUser,
+        'tugas_id' => $rayhanRPTaskId
     ]);
 
-    $rayhanRPResponse = @file_get_contents($rayhanRPUrl, false, $rayhanRPContext);
-    if ($rayhanRPResponse === false) {
-        return '';
-    }
+    sendMessage(
+        $rayhanRPChatId,
+        "Siap mengumpulkan tugas:\n[ID {$rayhanRPTaskId}] " . (string)$rayhanRPTaskData['judul'] . "\nGrup: " . (string)$rayhanRPTaskData['nama_grup'] . "\nKirim file atau foto sekarang.\nKetik /stop untuk membatalkan."
+    );
+    return true;
+}
 
-    $rayhanRPJson = json_decode((string)$rayhanRPResponse, true);
-    if (!is_array($rayhanRPJson) || !($rayhanRPJson['ok'] ?? false)) {
-        return '';
-    }
-
-    return (string)($rayhanRPJson['result']['file_path'] ?? '');
+function rayhanRP_fetchTelegramFilePath($rayhanRPFileId)
+{
+    $rayhanRPFileInfo = rayhanRPGetTelegramFileInfo($rayhanRPFileId);
+    return is_array($rayhanRPFileInfo) ? (string)($rayhanRPFileInfo['file_path'] ?? '') : '';
 }
 
 function rayhanRP_downloadTelegramFile($rayhanRPFilePath, $rayhanRPTargetPath)
 {
-    global $rayhanRPToken;
-
     if (trim($rayhanRPFilePath) === '' || trim($rayhanRPTargetPath) === '') {
         return false;
     }
 
-    $rayhanRPUrl = 'https://api.telegram.org/file/bot' . $rayhanRPToken . '/' . ltrim($rayhanRPFilePath, '/');
-    $rayhanRPContext = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 20
-        ]
-    ]);
-    $rayhanRPBinary = @file_get_contents($rayhanRPUrl, false, $rayhanRPContext);
-    if ($rayhanRPBinary === false) {
+    $rayhanRPBinary = rayhanRPDownloadTelegramFileBinary($rayhanRPFilePath);
+    if (!is_string($rayhanRPBinary) || $rayhanRPBinary === '') {
         return false;
     }
 
@@ -219,16 +342,28 @@ if (is_array($rayhanRPState) && isset($rayhanRPState['auth']) && is_array($rayha
     $rayhanRPAuthUser = $rayhanRPState['auth'];
 }
 
+$rayhanRPDefaultKeyboard = $rayhanRPAuthUser ? rayhanRP_buildMainKeyboard() : rayhanRP_buildStartKeyboard();
+
 if (rayhanRP_isCommand($rayhanRPText, '/stop')) {
     rayhanRP_setState($rayhanRPChatId, null);
-    sendMessage($rayhanRPChatId, "Proses dihentikan.\nKetik /start untuk memulai lagi.");
+    sendMessage($rayhanRPChatId, "Proses dihentikan.\nKetik /start untuk memulai lagi.", rayhanRP_buildStartKeyboard());
     exit;
 }
 
 if (rayhanRP_isCommand($rayhanRPText, '/start')) {
+    if ($rayhanRPAuthUser) {
+        $rayhanRPAuthLabel = rayhanRPFormatAccountLabel(
+            (string)($rayhanRPAuthUser['nama_lengkap'] ?? ''),
+            (string)($rayhanRPAuthUser['nis_nip'] ?? '-')
+        );
+        sendMessage($rayhanRPChatId, "Anda sudah masuk sebagai {$rayhanRPAuthLabel}.\nKetik /menu untuk lanjut atau /stop untuk ganti akun.");
+        rayhanRP_sendMainMenu($rayhanRPChatId);
+        exit;
+    }
+
     rayhanRP_setState($rayhanRPChatId, ['step' => 'awaiting_id']);
-    sendMessage($rayhanRPChatId, "Halo, $rayhanRPChatName! Selamat datang di Bot SiRey.");
-    sendMessage($rayhanRPChatId, "Masukkan NIS/NIP untuk login.\nKetik /stop kapan saja untuk membatalkan.");
+    sendMessage($rayhanRPChatId, "Halo, $rayhanRPChatName. Bot SiRey siap membantu jadwal dan tugas Anda.", rayhanRP_buildStartKeyboard());
+    sendMessage($rayhanRPChatId, "Langkah 1 dari 2: kirim NIS/NIP Anda.\nKetik /panduan jika perlu bantuan.\nKetik /stop jika ingin batal.", rayhanRP_buildStartKeyboard());
     exit;
 }
 
@@ -238,15 +373,18 @@ if ($rayhanRPStep === 'awaiting_nis') {
 }
 
 if ($rayhanRPStep === 'awaiting_id') {
-    $rayhanRPLoginId = $rayhanRPText;
+    if ($rayhanRPText !== '' && preg_match('/^\//', $rayhanRPText) === 1) {
+        // Biarkan command standar diproses di bawah.
+    } else {
+        $rayhanRPLoginId = $rayhanRPText;
 
-    if ($rayhanRPLoginId === '') {
-        sendMessage($rayhanRPChatId, "NIS/NIP tidak boleh kosong.");
-        exit;
-    }
+        if ($rayhanRPLoginId === '') {
+            sendMessage($rayhanRPChatId, "NIS/NIP tidak boleh kosong.");
+            exit;
+        }
 
     if (!preg_match('/^[A-Za-z0-9._-]{3,25}$/', $rayhanRPLoginId)) {
-        sendMessage($rayhanRPChatId, "Format NIS/NIP tidak valid.");
+        sendMessage($rayhanRPChatId, "Format NIS/NIP tidak valid. Gunakan huruf/angka (3-25 karakter).\nContoh: 102306363");
         exit;
     }
 
@@ -255,36 +393,31 @@ if ($rayhanRPStep === 'awaiting_id') {
         exit;
     }
 
-    $rayhanRPStmt = mysqli_prepare($databaseRayhanRP, "SELECT akun_id, nis_nip, role FROM akun WHERE nis_nip = ? LIMIT 1");
-    if (!$rayhanRPStmt) {
-        sendMessage($rayhanRPChatId, "Terjadi kesalahan sistem. Coba lagi.");
+    $rayhanRPAkun = rayhanRPFetchAccountByNisNip($databaseRayhanRP, $rayhanRPLoginId);
+    if (!$rayhanRPAkun) {
+        sendMessage($rayhanRPChatId, "NIS/NIP tidak ditemukan. Periksa lagi, lalu kirim ulang NIS/NIP.\nKetik /panduan jika perlu bantuan.");
         exit;
     }
 
-    mysqli_stmt_bind_param($rayhanRPStmt, "s", $rayhanRPLoginId);
-    $rayhanRPExecuted = mysqli_stmt_execute($rayhanRPStmt);
-    mysqli_stmt_bind_result($rayhanRPStmt, $rayhanRPDbAkunId, $rayhanRPDbNisNip, $rayhanRPDbRole);
-    $rayhanRPFound = $rayhanRPExecuted && mysqli_stmt_fetch($rayhanRPStmt);
-    mysqli_stmt_close($rayhanRPStmt);
-
-    if (!$rayhanRPFound) {
-        sendMessage($rayhanRPChatId, "NIS/NIP tidak ditemukan.");
-        exit;
-    }
-
+    $rayhanRPDbNisNip = (string)$rayhanRPAkun['nis_nip'];
     rayhanRP_setState($rayhanRPChatId, [
         'step' => 'awaiting_password',
-        'nis_nip' => $rayhanRPDbNisNip
+        'nis_nip' => $rayhanRPDbNisNip,
+        'nama_lengkap' => (string)($rayhanRPAkun['nama_lengkap'] ?? ''),
     ]);
-    sendMessage($rayhanRPChatId, "NIS/NIP ditemukan.\nMasukkan password.");
+    sendMessage($rayhanRPChatId, "Langkah 2 dari 2: kirim password untuk {$rayhanRPDbNisNip}.\nKetik /stop jika ingin batal login.");
     exit;
+    }
 }
 
 if ($rayhanRPStep === 'awaiting_password') {
-    if (trim($rayhanRPTextRaw) === '') {
-        sendMessage($rayhanRPChatId, "Password tidak boleh kosong.");
-        exit;
-    }
+    if ($rayhanRPText !== '' && preg_match('/^\//', $rayhanRPText) === 1) {
+        // Biarkan command standar diproses di bawah.
+    } else {
+        if (trim($rayhanRPTextRaw) === '') {
+            sendMessage($rayhanRPChatId, "Password tidak boleh kosong.");
+            exit;
+        }
 
     $rayhanRPLoginId = is_array($rayhanRPState) ? (string)($rayhanRPState['nis_nip'] ?? ($rayhanRPState['nis'] ?? '')) : '';
     if ($rayhanRPLoginId === '') {
@@ -298,50 +431,68 @@ if ($rayhanRPStep === 'awaiting_password') {
         exit;
     }
 
-    $rayhanRPStmt = mysqli_prepare($databaseRayhanRP, "SELECT akun_id, nis_nip, role, password FROM akun WHERE nis_nip = ? LIMIT 1");
-    if (!$rayhanRPStmt) {
-        sendMessage($rayhanRPChatId, "Terjadi kesalahan sistem. Coba lagi.");
-        exit;
-    }
-
-    mysqli_stmt_bind_param($rayhanRPStmt, "s", $rayhanRPLoginId);
-    $rayhanRPExecuted = mysqli_stmt_execute($rayhanRPStmt);
-    mysqli_stmt_bind_result($rayhanRPStmt, $rayhanRPDbAkunId, $rayhanRPDbNisNip, $rayhanRPDbRole, $rayhanRPDbPassword);
-    $rayhanRPFound = $rayhanRPExecuted && mysqli_stmt_fetch($rayhanRPStmt);
-    mysqli_stmt_close($rayhanRPStmt);
-
-    if (!$rayhanRPFound) {
+    $rayhanRPAkun = rayhanRPFetchAccountByNisNip($databaseRayhanRP, $rayhanRPLoginId);
+    if (!$rayhanRPAkun) {
         rayhanRP_setState($rayhanRPChatId, ['step' => 'awaiting_id']);
         sendMessage($rayhanRPChatId, "Data akun tidak ditemukan. Mulai lagi dengan /start.");
         exit;
     }
 
-    $rayhanRPDbPassword = (string)$rayhanRPDbPassword;
-    $rayhanRPValid = hash_equals($rayhanRPDbPassword, $rayhanRPTextRaw);
-    if (!$rayhanRPValid && function_exists('password_verify')) {
-        $rayhanRPValid = password_verify($rayhanRPTextRaw, $rayhanRPDbPassword);
-    }
-
-    if (!$rayhanRPValid) {
-        sendMessage($rayhanRPChatId, "Password salah. Coba lagi atau ketik /stop.");
+    if (!rayhanRPVerifyAccountPassword($databaseRayhanRP, $rayhanRPAkun, $rayhanRPTextRaw)) {
+        sendMessage($rayhanRPChatId, "Password salah. Silakan coba lagi.\nKetik /stop untuk membatalkan login.");
         exit;
     }
 
-    $rayhanRPDbRole = $rayhanRPDbRole ?: '-';
+    $rayhanRPAkunIdInt = (int)($rayhanRPAkun['akun_id'] ?? 0);
+    $rayhanRPDbNisNip = (string)($rayhanRPAkun['nis_nip'] ?? '');
+    $rayhanRPDbRole = (string)($rayhanRPAkun['role'] ?? '-');
+    $rayhanRPNamaLengkap = (string)($rayhanRPAkun['nama_lengkap'] ?? '');
+    rayhanRP_linkAkunTelegram($databaseRayhanRP, $rayhanRPAkunIdInt, $rayhanRPChatId);
+    rayhanRP_ensurePreferensiRow($databaseRayhanRP, $rayhanRPAkunIdInt);
+
     rayhanRP_setState($rayhanRPChatId, [
         'step' => 'authenticated',
         'auth' => [
-            'akun_id' => (int)$rayhanRPDbAkunId,
+            'akun_id' => $rayhanRPAkunIdInt,
             'nis_nip' => $rayhanRPDbNisNip,
+            'nama_lengkap' => $rayhanRPNamaLengkap,
             'role' => $rayhanRPDbRole
         ]
     ]);
 
-    sendMessage($rayhanRPChatId, "Login berhasil.");
-    sendMessage($rayhanRPChatId, "Pilihan Menu:\n1. /tugas - Lihat daftar tugas\n2. /kumpul <id_tugas> - Kumpulkan tugas\n3. /jadwal - Lihat jadwal pelajaran");
+    $rayhanRPLabel = rayhanRPFormatAccountLabel($rayhanRPNamaLengkap, $rayhanRPDbNisNip);
+    sendMessage($rayhanRPChatId, "Login berhasil. Selamat datang {$rayhanRPLabel}.", rayhanRP_buildMainKeyboard());
+    rayhanRP_sendMainMenu($rayhanRPChatId);
     exit;
 }
+}
 
+if ($rayhanRPStep === 'awaiting_tugas_id') {
+    if ($rayhanRPText !== '' && preg_match('/^\//', $rayhanRPText) === 1) {
+        // Biarkan command standar diproses di bawah.
+    } else {
+        if (!$rayhanRPAuthUser && is_array($rayhanRPState) && isset($rayhanRPState['auth']) && is_array($rayhanRPState['auth'])) {
+            $rayhanRPAuthUser = $rayhanRPState['auth'];
+        }
+
+        if (!$rayhanRPAuthUser) {
+            rayhanRP_setState($rayhanRPChatId, ['step' => 'awaiting_id']);
+            sendMessage($rayhanRPChatId, "Sesi login tidak ditemukan. Mulai lagi dengan /start.");
+            exit;
+        }
+
+        $rayhanRPTaskIdInput = (int)trim($rayhanRPText);
+        if ($rayhanRPTaskIdInput <= 0) {
+            sendMessage($rayhanRPChatId, "Masukkan ID tugas berupa angka.\nContoh: 1\nKetik /stop untuk batal.");
+            exit;
+        }
+
+        if (rayhanRP_startKumpulByTask($databaseRayhanRP, $rayhanRPChatId, $rayhanRPAuthUser, $rayhanRPTaskIdInput)) {
+            exit;
+        }
+        exit;
+    }
+}
 if ($rayhanRPStep === 'awaiting_tugas_file') {
     if (!$rayhanRPAuthUser && is_array($rayhanRPState) && isset($rayhanRPState['auth']) && is_array($rayhanRPState['auth'])) {
         $rayhanRPAuthUser = $rayhanRPState['auth'];
@@ -360,7 +511,7 @@ if ($rayhanRPStep === 'awaiting_tugas_file') {
             'step' => 'authenticated',
             'auth' => $rayhanRPAuthUser
         ]);
-        sendMessage($rayhanRPChatId, "Data tugas tidak valid. Gunakan /tugas lalu /kumpul <id_tugas>.");
+        sendMessage($rayhanRPChatId, "Data tugas tidak valid. Gunakan /tugas lalu /kumpul.");
         exit;
     }
 
@@ -519,9 +670,91 @@ if ($rayhanRPStep === 'awaiting_tugas_file') {
     exit;
 }
 
+if (rayhanRP_isPreferensiCommand($rayhanRPText)) {
+    if (!$rayhanRPAuthUser) {
+        rayhanRP_sendNeedLogin($rayhanRPChatId);
+        exit;
+    }
+
+    if (!$databaseRayhanRP) {
+        sendMessage($rayhanRPChatId, "Koneksi database gagal. Coba lagi nanti.");
+        exit;
+    }
+
+    $rayhanRPAkunId = isset($rayhanRPAuthUser['akun_id']) ? (int)$rayhanRPAuthUser['akun_id'] : 0;
+    if ($rayhanRPAkunId <= 0) {
+        sendMessage($rayhanRPChatId, "Sesi login tidak lengkap. Silakan login ulang dengan /start.");
+        exit;
+    }
+
+    $rayhanRPPreferensi = rayhanRP_ensurePreferensiRow($databaseRayhanRP, $rayhanRPAkunId);
+    if (!$rayhanRPPreferensi) {
+        sendMessage($rayhanRPChatId, "Gagal membaca preferensi pengingat.");
+        exit;
+    }
+
+    $rayhanRPArgs = strtolower((string)rayhanRP_getPreferensiArgs($rayhanRPText));
+    if ($rayhanRPArgs === '' || $rayhanRPArgs === 'status') {
+        sendMessage($rayhanRPChatId, rayhanRP_formatPreferensiMessage($rayhanRPPreferensi));
+        exit;
+    }
+
+    $rayhanRPUpdated = false;
+    if ($rayhanRPArgs === 'on' || $rayhanRPArgs === 'off') {
+        $rayhanRPValue = $rayhanRPArgs === 'on' ? 1 : 0;
+        $rayhanRPStmt = mysqli_prepare($databaseRayhanRP, "UPDATE prefrensi_user SET pengingat_aktif = ? WHERE id_preferensi = ? LIMIT 1");
+        if ($rayhanRPStmt) {
+            $rayhanRPIdPref = (int)$rayhanRPPreferensi['id_preferensi'];
+            mysqli_stmt_bind_param($rayhanRPStmt, 'ii', $rayhanRPValue, $rayhanRPIdPref);
+            $rayhanRPUpdated = mysqli_stmt_execute($rayhanRPStmt);
+            mysqli_stmt_close($rayhanRPStmt);
+        }
+    } elseif ($rayhanRPArgs === 'reset') {
+        $rayhanRPDefaultAktif = 1;
+        $rayhanRPDefaultWaktu = '08:00:00';
+        $rayhanRPDefaultOffset = 30;
+        $rayhanRPStmt = mysqli_prepare($databaseRayhanRP, "UPDATE prefrensi_user SET pengingat_aktif = ?, waktu_default = ?, offset_custom_menit = ? WHERE id_preferensi = ? LIMIT 1");
+        if ($rayhanRPStmt) {
+            $rayhanRPIdPref = (int)$rayhanRPPreferensi['id_preferensi'];
+            mysqli_stmt_bind_param($rayhanRPStmt, 'isii', $rayhanRPDefaultAktif, $rayhanRPDefaultWaktu, $rayhanRPDefaultOffset, $rayhanRPIdPref);
+            $rayhanRPUpdated = mysqli_stmt_execute($rayhanRPStmt);
+            mysqli_stmt_close($rayhanRPStmt);
+        }
+    } elseif (preg_match('/^custom\s+(\d{1,4})$/', $rayhanRPArgs, $rayhanRPMatches) === 1) {
+        $rayhanRPValue = (int)$rayhanRPMatches[1];
+        if ($rayhanRPValue < 1 || $rayhanRPValue > 1440) {
+            sendMessage($rayhanRPChatId, "Nilai custom harus 1 sampai 1440 menit.");
+            exit;
+        }
+        $rayhanRPStmt = mysqli_prepare($databaseRayhanRP, "UPDATE prefrensi_user SET offset_custom_menit = ? WHERE id_preferensi = ? LIMIT 1");
+        if ($rayhanRPStmt) {
+            $rayhanRPIdPref = (int)$rayhanRPPreferensi['id_preferensi'];
+            mysqli_stmt_bind_param($rayhanRPStmt, 'ii', $rayhanRPValue, $rayhanRPIdPref);
+            $rayhanRPUpdated = mysqli_stmt_execute($rayhanRPStmt);
+            mysqli_stmt_close($rayhanRPStmt);
+        }
+    } else {
+        sendMessage($rayhanRPChatId, "Format /preferensi belum tepat.\nCoba salah satu:\n/preferensi\n/preferensi on\n/preferensi off\n/preferensi custom 45\n/preferensi reset");
+        exit;
+    }
+
+    if (!$rayhanRPUpdated) {
+        sendMessage($rayhanRPChatId, "Gagal memperbarui preferensi.");
+        exit;
+    }
+
+    $rayhanRPPreferensiBaru = rayhanRP_getLatestPreferensiByAkun($databaseRayhanRP, $rayhanRPAkunId);
+    if (!$rayhanRPPreferensiBaru) {
+        $rayhanRPPreferensiBaru = $rayhanRPPreferensi;
+    }
+
+    sendMessage($rayhanRPChatId, "Preferensi berhasil diperbarui.\n\n" . rayhanRP_formatPreferensiMessage($rayhanRPPreferensiBaru));
+    exit;
+}
+
 if (rayhanRP_isCommand($rayhanRPText, '/tugas')) {
     if (!$rayhanRPAuthUser) {
-        sendMessage($rayhanRPChatId, "Silakan login dulu dengan /start.");
+        rayhanRP_sendNeedLogin($rayhanRPChatId);
         exit;
     }
 
@@ -609,7 +842,7 @@ if (rayhanRP_isCommand($rayhanRPText, '/tugas')) {
     }
 
     $rayhanRPTugasLines[] = "";
-    $rayhanRPTugasLines[] = "Kumpulkan tugas: /kumpul <id_tugas>";
+    $rayhanRPTugasLines[] = "Kumpulkan tugas: tekan /kumpul di keyboard atau /kumpul <id_tugas>";
     $rayhanRPTugasLines[] = "Contoh: /kumpul 1";
     sendMessage($rayhanRPChatId, implode("\n", $rayhanRPTugasLines));
     exit;
@@ -617,54 +850,33 @@ if (rayhanRP_isCommand($rayhanRPText, '/tugas')) {
 
 if (rayhanRP_isCommand($rayhanRPText, '/kumpul')) {
     if (!$rayhanRPAuthUser) {
-        sendMessage($rayhanRPChatId, "Silakan login dulu dengan /start.");
+        rayhanRP_sendNeedLogin($rayhanRPChatId);
         exit;
     }
 
     $rayhanRPTaskId = rayhanRP_parseKumpulCommandId($rayhanRPText);
-    if ($rayhanRPTaskId === null || $rayhanRPTaskId <= 0) {
-        sendMessage($rayhanRPChatId, "Format perintah:\n/kumpul <id_tugas>\nContoh: /kumpul 1");
+    if ($rayhanRPTaskId === null) {
+        sendMessage($rayhanRPChatId, "Gunakan tombol /kumpul di keyboard atau format: /kumpul <id_tugas>\nContoh: /kumpul 1");
         exit;
     }
 
-    if (!$databaseRayhanRP) {
-        sendMessage($rayhanRPChatId, "Koneksi database gagal. Coba lagi nanti.");
+    if ($rayhanRPTaskId === 0) {
+        rayhanRP_setState($rayhanRPChatId, [
+            'step' => 'awaiting_tugas_id',
+            'auth' => $rayhanRPAuthUser,
+        ]);
+        sendMessage($rayhanRPChatId, "Masukkan ID tugas yang ingin dikumpulkan.\nContoh: 1\nKetik /stop untuk batal.");
         exit;
     }
 
-    if (!rayhanRP_ensureTugasPengumpulanTable($databaseRayhanRP)) {
-        sendMessage($rayhanRPChatId, "Tabel pengumpulan tugas belum siap.");
+    if (rayhanRP_startKumpulByTask($databaseRayhanRP, $rayhanRPChatId, $rayhanRPAuthUser, $rayhanRPTaskId)) {
         exit;
     }
-
-    $rayhanRPAkunId = isset($rayhanRPAuthUser['akun_id']) ? (int)$rayhanRPAuthUser['akun_id'] : 0;
-    if ($rayhanRPAkunId <= 0) {
-        sendMessage($rayhanRPChatId, "Sesi login tidak lengkap. Silakan login ulang dengan /start.");
-        exit;
-    }
-
-    $rayhanRPTaskData = rayhanRP_fetchTaskForUser($databaseRayhanRP, $rayhanRPTaskId, $rayhanRPAkunId);
-    if (!$rayhanRPTaskData) {
-        sendMessage($rayhanRPChatId, "ID tugas tidak ditemukan atau tidak termasuk grup Anda.");
-        exit;
-    }
-
-    rayhanRP_setState($rayhanRPChatId, [
-        'step' => 'awaiting_tugas_file',
-        'auth' => $rayhanRPAuthUser,
-        'tugas_id' => $rayhanRPTaskId
-    ]);
-
-    sendMessage(
-        $rayhanRPChatId,
-        "Siap mengumpulkan tugas:\n[ID {$rayhanRPTaskId}] " . (string)$rayhanRPTaskData['judul'] . "\nGrup: " . (string)$rayhanRPTaskData['nama_grup'] . "\nKirim file atau foto sekarang.\nKetik /stop untuk membatalkan."
-    );
     exit;
 }
-
 if (rayhanRP_isCommand($rayhanRPText, '/jadwal')) {
     if (!$rayhanRPAuthUser) {
-        sendMessage($rayhanRPChatId, "Silakan login dulu dengan /start.");
+        rayhanRP_sendNeedLogin($rayhanRPChatId);
         exit;
     }
 
@@ -747,17 +959,22 @@ if (rayhanRP_isCommand($rayhanRPText, '/jadwal')) {
 
 if (rayhanRP_isCommand($rayhanRPText, '/menu')) {
     if (!$rayhanRPAuthUser) {
-        sendMessage($rayhanRPChatId, "Silakan login dulu dengan /start.");
+        rayhanRP_sendNeedLogin($rayhanRPChatId);
         exit;
     }
 
-    sendMessage($rayhanRPChatId, "Pilihan Menu:\n1. /tugas - Lihat daftar tugas\n2. /kumpul <id_tugas> - Kumpulkan tugas\n3. /jadwal - Lihat jadwal pelajaran");
+    rayhanRP_sendMainMenu($rayhanRPChatId);
     exit;
 }
 
-if (rayhanRP_isCommand($rayhanRPText, '/help')) {
-    sendMessage($rayhanRPChatId, "Daftar Perintah:\n/start - Memulai interaksi dengan bot\n/stop - Menghentikan proses\n/help - Menampilkan daftar perintah\n/menu - Menampilkan menu utama\n/tugas - Menampilkan daftar tugas\n/kumpul <id_tugas> - Mulai kirim tugas (file/foto)\n/jadwal - Menampilkan jadwal pelajaran");
+if (rayhanRP_isCommand($rayhanRPText, '/help') || rayhanRP_isCommand($rayhanRPText, '/panduan')) {
+    sendMessage(
+        $rayhanRPChatId,
+        rayhanRP_getHelpText(),
+        $rayhanRPAuthUser ? rayhanRP_buildMainKeyboard() : rayhanRP_buildStartKeyboard()
+    );
     exit;
 }
 
-sendMessage($rayhanRPChatId, "Perintah tidak dikenali. Ketik /help untuk daftar perintah.");
+sendMessage($rayhanRPChatId, "Perintah tidak dikenali. Gunakan tombol keyboard atau ketik /panduan.");
+?>

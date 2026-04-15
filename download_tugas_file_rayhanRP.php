@@ -1,15 +1,11 @@
 <?php
 require_once __DIR__ . '/koneksi_rayhanRP.php';
 require_once __DIR__ . '/function/function_bot_rayhanRP.php';
-session_start();
+rayhanRPStartSession();
 
-if (empty($_SESSION['rayhanRP_admin_login'])) {
-    header('Location: Web Admin/loginAdmin_rayhanRP.php');
-    exit;
-}
-
-$rayhanRPAdminId = (int)($_SESSION['rayhanRP_admin_id'] ?? 0);
-$rayhanRPAdminRole = strtolower(trim((string)($_SESSION['rayhanRP_admin_role'] ?? '')));
+$rayhanRPAdmin = rayhanRPRequireAdminSession('Web Admin/loginAdmin_rayhanRP.php');
+$rayhanRPAdminId = (int)$rayhanRPAdmin['akun_id'];
+$rayhanRPAdminRole = (string)$rayhanRPAdmin['role'];
 $rayhanRPIdPengumpulan = (int)($_GET['id'] ?? 0);
 
 if ($rayhanRPIdPengumpulan <= 0) {
@@ -22,19 +18,6 @@ if (!$databaseRayhanRP) {
     http_response_code(500);
     echo 'Koneksi database gagal.';
     exit;
-}
-
-if ($rayhanRPAdminRole === '' && $rayhanRPAdminId > 0) {
-    $rayhanRPRoleStmt = mysqli_prepare($databaseRayhanRP, 'SELECT role FROM akun WHERE akun_id = ? LIMIT 1');
-    if ($rayhanRPRoleStmt) {
-        mysqli_stmt_bind_param($rayhanRPRoleStmt, 'i', $rayhanRPAdminId);
-        mysqli_stmt_execute($rayhanRPRoleStmt);
-        mysqli_stmt_bind_result($rayhanRPRoleStmt, $rayhanRPDbRole);
-        if (mysqli_stmt_fetch($rayhanRPRoleStmt)) {
-            $rayhanRPAdminRole = strtolower(trim((string)$rayhanRPDbRole));
-        }
-        mysqli_stmt_close($rayhanRPRoleStmt);
-    }
 }
 
 if ($rayhanRPAdminRole !== 'admin' && $rayhanRPAdminRole !== 'guru') {

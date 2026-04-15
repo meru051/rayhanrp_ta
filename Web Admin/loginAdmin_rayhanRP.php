@@ -1,73 +1,39 @@
 <?php
 require_once __DIR__ . '/../koneksi_rayhanRP.php';
-session_start();
+
+rayhanRPStartSession();
 
 $rayhanRPError = '';
 $rayhanRPSuccess = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $rayhanRPNisNip = trim((string)($_POST['nip_nis'] ?? ''));
-    $rayhanRPPassword = (string)($_POST['password'] ?? '');
+        $rayhanRPNisNip = trim((string)($_POST['nip_nis'] ?? ''));
+        $rayhanRPPassword = (string)($_POST['password'] ?? '');
 
     if ($rayhanRPNisNip === '' || $rayhanRPPassword === '') {
         $rayhanRPError = 'NIP/NIS dan password wajib diisi.';
     } elseif (!$databaseRayhanRP) {
         $rayhanRPError = 'Koneksi database gagal.';
     } else {
-        $rayhanRPStmt = mysqli_prepare(
-            $databaseRayhanRP,
-            'SELECT akun_id, nis_nip, password, role FROM akun WHERE nis_nip = ? LIMIT 1'
-        );
-
-        if (!$rayhanRPStmt) {
-            $rayhanRPError = 'Gagal menyiapkan query login.';
+        $rayhanRPAkun = rayhanRPFetchAccountByNisNip($databaseRayhanRP, $rayhanRPNisNip);
+        if (!$rayhanRPAkun) {
+            $rayhanRPError = 'Akun tidak ditemukan.';
         } else {
-            mysqli_stmt_bind_param($rayhanRPStmt, 's', $rayhanRPNisNip);
-
-            if (!mysqli_stmt_execute($rayhanRPStmt)) {
-                $rayhanRPError = 'Gagal mengeksekusi query login.';
+            $rayhanRPRoleNormalized = rayhanRPNormalizeRole($rayhanRPAkun['role'] ?? '');
+            if ($rayhanRPRoleNormalized !== 'admin' && $rayhanRPRoleNormalized !== 'guru') {
+                $rayhanRPError = 'Akun ini tidak bisa masuk ke panel.';
+            } elseif (!rayhanRPVerifyAccountPassword($databaseRayhanRP, $rayhanRPAkun, $rayhanRPPassword)) {
+                $rayhanRPError = 'Password salah.';
             } else {
-                mysqli_stmt_bind_result($rayhanRPStmt, $rayhanRPIdAkun, $rayhanRPDbNisNip, $rayhanRPDbPassword, $rayhanRPDbRole);
-                $rayhanRPFound = mysqli_stmt_fetch($rayhanRPStmt);
-
-                if (!$rayhanRPFound) {
-                    $rayhanRPError = 'Akun tidak ditemukan.';
-                } else {
-                    $rayhanRPRoleNormalized = strtolower(trim((string)$rayhanRPDbRole));
-                    if ($rayhanRPRoleNormalized !== 'admin' && $rayhanRPRoleNormalized !== 'guru') {
-                        $rayhanRPError = 'Akun ini tidak memiliki akses panel.';
-                    } else {
-                        $rayhanRPIsValid = password_verify($rayhanRPPassword, (string)$rayhanRPDbPassword);
-
-                        if (!$rayhanRPIsValid && hash_equals((string)$rayhanRPDbPassword, $rayhanRPPassword)) {
-                            $rayhanRPNewHash = password_hash($rayhanRPPassword, PASSWORD_DEFAULT);
-                            if ($rayhanRPNewHash !== false) {
-                                $rayhanRPUpdateStmt = mysqli_prepare($databaseRayhanRP, 'UPDATE akun SET password = ? WHERE akun_id = ? LIMIT 1');
-                                if ($rayhanRPUpdateStmt) {
-                                    mysqli_stmt_bind_param($rayhanRPUpdateStmt, 'si', $rayhanRPNewHash, $rayhanRPIdAkun);
-                                    mysqli_stmt_execute($rayhanRPUpdateStmt);
-                                    mysqli_stmt_close($rayhanRPUpdateStmt);
-                                    $rayhanRPIsValid = true;
-                                }
-                            }
-                        }
-
-                        if (!$rayhanRPIsValid) {
-                            $rayhanRPError = 'Password salah.';
-                        } else {
-                            session_regenerate_id(true);
-                            $_SESSION['rayhanRP_admin_login'] = true;
-                            $_SESSION['rayhanRP_admin_id'] = (int)$rayhanRPIdAkun;
-                            $_SESSION['rayhanRP_admin_nis_nip'] = (string)$rayhanRPDbNisNip;
-                            $_SESSION['rayhanRP_admin_role'] = $rayhanRPRoleNormalized;
-                            header('Location: adminWeb_rayhanRP.php');
-                            exit;
-                        }
-                    }
-                }
+                session_regenerate_id(true);
+                $_SESSION['rayhanRP_admin_login'] = true;
+                $_SESSION['rayhanRP_admin_id'] = (int)$rayhanRPAkun['akun_id'];
+                $_SESSION['rayhanRP_admin_nis_nip'] = (string)$rayhanRPAkun['nis_nip'];
+                $_SESSION['rayhanRP_admin_nama'] = (string)($rayhanRPAkun['nama_lengkap'] ?? '');
+                $_SESSION['rayhanRP_admin_role'] = $rayhanRPRoleNormalized;
+                header('Location: adminWeb_rayhanRP.php');
+                exit;
             }
-
-            mysqli_stmt_close($rayhanRPStmt);
         }
     }
 }
@@ -216,26 +182,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     </style>
+    <link rel="stylesheet" href="assets/admin_theme_rayhanRP.css">
 </head>
 
-<body>
+<body class="admin-auth">
     <main class="login-card">
         <section class="login-header">
-            <h1 class="login-title">Admin Login</h1>
-            <p class="login-subtitle">Masuk menggunakan NIP/NIS dan password untuk mengakses panel admin.</p>
+            <h1 class="login-title">Masuk ke Panel</h1>
+            <p class="login-subtitle">Gunakan NIS/NIP dan password akun Anda untuk membuka panel admin atau guru.</p>
+            <div class="quick-help">
+                Yang bisa masuk hanya akun dengan role <strong>admin</strong> atau <strong>guru</strong>.
+            </div>
         </section>
 
         <section class="login-body">
-            <form method="POST" action="">
+            <form method="POST" action="" novalidate>
                 <div class="field">
-                    <label for="nip_nis">NIP/NIS</label>
+                    <label for="nip_nis">NIS / NIP</label>
+                    <p class="field-hint">Masukkan nilai <code>nis_nip</code> dari data akun.</p>
                     <input id="nip_nis" type="text" name="nip_nis" autocomplete="username" required value="<?php echo htmlspecialchars((string)($_POST['nip_nis'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
 
                 <div class="field">
                     <label for="password">Password</label>
+                    <p class="field-hint">Gunakan password akun yang sama seperti saat login bot.</p>
                     <input id="password" type="password" name="password" autocomplete="current-password" required>
                 </div>
+
+                <label class="toggle-row" for="showPassword">
+                    <input id="showPassword" type="checkbox">
+                    Lihat password
+                </label>
 
                 <button class="login-btn" type="submit">Masuk</button>
             </form>
@@ -249,6 +226,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
         </section>
     </main>
+
+    <script>
+        (function () {
+            var toggle = document.getElementById('showPassword');
+            var pass = document.getElementById('password');
+            if (!toggle || !pass) {
+                return;
+            }
+            toggle.addEventListener('change', function () {
+                pass.type = toggle.checked ? 'text' : 'password';
+            });
+        })();
+    </script>
 </body>
 
 </html>
+
